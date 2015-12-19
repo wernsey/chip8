@@ -1,0 +1,4 @@
+GAMES/*
+*.o
+*.exe
+*.log
