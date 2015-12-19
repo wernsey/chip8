@@ -1,17 +1,9 @@
 /*
-[1] https://en.wikipedia.org/wiki/CHIP-8
-[2] Cowgod's Chip-8 Technical Reference v1.0, by Thomas P. Greene, http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
-[3] http://www.multigesture.net/articles/how-to-write-an-emulator-chip-8-interpreter/
-[4] CHIP8 A CHIP8/SCHIP emulator Version 2.2.0, by David WINTER (http://devernay.free.fr/hacks/chip8/CHIP8.DOC)
-[5] Chip 8 instruction set, author unknown(?), http://devernay.free.fr/hacks/chip8/chip8def.htm
-[6] Byte Magazine Volume 03 Number 12 - Life pp. 108–122. "An Easy Programming System," by Joseph Weisbecker,
-	https://archive.org/details/byte-magazine-1978-12
-[7] http://chip8.wikia.com/wiki/Chip8
-[8] http://chip8.wikia.com/wiki/Instruction_Draw
-[9] Mastering CHIP-8 by Matthew Mikolay, http://mattmik.com/chip8.html
-[10] Octo, John Earnest, https://github.com/JohnEarnest/Octo
-[11] Octo SuperChip document, John Earnest, https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/SuperChip.md
+Core of the CHIP-8 interpreter.
+This file should be kept platform independent. Everything that is
+platform dependent should be moved elsewhere.
 */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

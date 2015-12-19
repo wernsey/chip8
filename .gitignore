@@ -2,3 +2,6 @@ GAMES/*
 *.o
 *.exe
 *.log
+
+# default assembler output file
+a.ch8
