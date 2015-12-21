@@ -114,7 +114,7 @@ void c8_disasm() {
 			if(addr <= max_addr) {
 				/* You've reached data that is non-null, but not code either. */
 				if(!odata++) {
-					c8_message("L%03X: data #%02X", addr, c8_get(addr));
+					c8_message("L%03X: db #%02X", addr, c8_get(addr));
 				} else {
 					c8_message(", #%02X", c8_get(addr));
 					if(odata % 4 == 0) {
