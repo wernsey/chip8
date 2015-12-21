@@ -26,6 +26,9 @@ The [GAMES.zip](http://devernay.free.fr/hacks/chip8/GAMES.zip) file contains sev
 * [8] says that images aren't generally wrapped, but [3] and [10] seems to think differently.
 * According to [7], the upper 256 bytes of RAM is used for the display, but it seems that modern interpreters don't do that. Besides, you'd need 1024 bytes to store the SCHIP's hi-res mode.
 * `hp48_flags` is not cleared between runs (See [11]); I don't make any effort to persist them, though.
+* Apparently there are CHIP-8 interpreters out there that don't use the standard 64x32 and 128x64 resolutions, but I don't support those.
+* As far as I can tell, there is not much in terms of standard timings on CHIP-8 implementations. My implementation follows the notes in [12]: The interpreter 
+	refreshes the screen at 60 frames per second, and 10 instructions are executed during each frame.
 
 ### Portability
 
@@ -42,12 +45,13 @@ At the moment, only a Windows version that uses a simple hook around the Win32 G
 * [3] http://www.multigesture.net/articles/how-to-write-an-emulator-chip-8-interpreter/
 * [4] CHIP8 A CHIP8/SCHIP emulator Version 2.2.0, by David WINTER (http://devernay.free.fr/hacks/chip8/CHIP8.DOC)
 * [5] Chip 8 instruction set, author unknown(?), http://devernay.free.fr/hacks/chip8/chip8def.htm
-* [6] Byte Magazine Volume 03 Number 12 - Life pp. 108–122. "An Easy Programming System," by Joseph Weisbecker, https://archive.org/details/byte-magazine-1978-12
+* [6] Byte Magazine Volume 03 Number 12 - Life pp. 108-122. "An Easy Programming System," by Joseph Weisbecker, https://archive.org/details/byte-magazine-1978-12
 * [7] http://chip8.wikia.com/wiki/Chip8
 * [8] http://chip8.wikia.com/wiki/Instruction_Draw
 * [9] Mastering CHIP-8 by Matthew Mikolay, http://mattmik.com/chip8.html
 * [10] Octo, John Earnest, https://github.com/JohnEarnest/Octo
 * [11] Octo SuperChip document, John Earnest, https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/SuperChip.md
+* [12] http://www.codeslinger.co.uk/pages/projects/chip8/primitive.html
 
 ## License
 

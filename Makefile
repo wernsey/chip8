@@ -6,7 +6,7 @@
 CFLAGS=-c -Wall
 LDFLAGS=
 
-all: c8asm.exe c8dasm.exe chip8.exe
+all: c8asm.exe c8dasm.exe chip8.exe docs
 
 c8asm.exe: asmmain.o c8asm.o chip8.o getopt.o
 	$(CC) $(LDFLAGS) -o $@ $^
@@ -28,6 +28,11 @@ asmmain.o: asmmain.c chip8.h getopt.h
 dasmmain.o: dasmmain.c chip8.h getopt.h
 render.o: render.c chip8.h gdi.h bmp.h getopt.h
 gdi.o: gdi.c gdi.h bmp.h
+
+docs: chip8.html
+
+chip8.html: chip8.h doc.awk
+	awk -f doc.awk chip8.h > $@
 
 .PHONY : clean
 

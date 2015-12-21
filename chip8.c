@@ -454,6 +454,7 @@ uint16_t c8_prog_size() {
 }
 
 uint8_t c8_get_reg(uint8_t r) {
+	if(r > 0xF) return 0;
 	return V[r];
 }
 
@@ -488,19 +489,13 @@ int c8_get_pixel(int x, int y) {
 }
 
 void c8_key_down(uint8_t k) {
+	if(k > 0xF) return;
 	keys |= 1 << k;
 }
 
 void c8_key_up(uint8_t k) {
+	if(k > 0xF) return;
 	keys &= ~(1 << k);
-}
-
-void c8_set_keys(uint16_t k) {
-	keys = k;
-}
-
-uint16_t c8_get_keys() {
-	return keys;
 }
 
 void c8_60hz_tick() {
@@ -575,10 +570,10 @@ int c8_save_file(const char *fname) {
 	if(fwrite(RAM + PROG_OFFSET, 1, len, f) != len)
 		return 0;
 	fclose(f);
-	return 1;
+	return len;
 }
 
-void c8_message(const char *msg, ...) {
+int c8_message(const char *msg, ...) {
 	if(msg) {
 		va_list arg;
 		va_start (arg, msg);
@@ -586,5 +581,6 @@ void c8_message(const char *msg, ...) {
 		va_end (arg);
 	}
 	if(c8_puts)
-		c8_puts(c8_message_text);
+		return c8_puts(c8_message_text);
+	return 0;
 }

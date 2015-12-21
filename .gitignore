@@ -1,7 +1,12 @@
-GAMES/*
 *.o
 *.exe
 *.log
+
+# Generated documentation:
+chip8.html
+
+# http://devernay.free.fr/hacks/chip8/GAMES.zip
+GAMES/*
 
 # default assembler output file
 a.ch8
