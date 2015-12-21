@@ -16,12 +16,17 @@
  ** Tell the intepreter about every 60Hz timer tick; see {{c8_60hz_tick()}}.
  ** Play sound. Since the sound is just a buzzer, you may wish to skip this; 
  *#    See {{c8_sound()}}.
- *}
- *#
+ *} 
  *# The header also includes an API for the CHIP-8 assembler and a disassembler.
- *# The syntax is based on *# {*Cowgod's Chip-8 Technical Reference v1.0*} 
+ *# The syntax is based on {*Cowgod's Chip-8 Technical Reference v1.0*} 
  *# by Thomas P. Greene available at
  *# http://devernay.free.fr/hacks/chip8/C8TECH10.HTM\n
+ *2 License
+ *[
+ *# Author: Werner Stoop
+ *# This is free and unencumbered software released into the public domain.
+ *# http://unlicense.org/
+ *]
  */
  
 /*2 Definitions */
@@ -171,8 +176,8 @@ void c8_60hz_tick();
 int c8_sound();
 
 /*2 I/O Routines 
- *# The toolkit provides several functions to save programs to 
- *# and load programs from disk.
+ *# The toolkit provides several functions to save 
+ *# and load CHIP-8 programs to and from disk.
  */
 
 /*@ size_t c8_load_program(uint8_t program[], size_t n);
