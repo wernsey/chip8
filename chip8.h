@@ -235,7 +235,7 @@ extern char c8_message_text[];
 
 /*@ int c8_assemble(const char *text);
  *# Assembles a block of text into the interpreter's RAM.\n
- *# The assembled program can be written to a file using {{c8_save_file()}}.
+ *# The assembled program can be written to a file using {{c8_save_file()}}.\n
  *# {{c8_load_txt()}} is provided as a utility function to load
  *# a text file that can be assembled.\n
  *# See {{asmmain.c}} for an example of a program that uses this function.

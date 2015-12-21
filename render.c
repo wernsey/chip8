@@ -36,8 +36,7 @@ void init_game(int argc, char *argv[]) {
 				c8_verbose++;
 			} break;
 			case '?' : {
-				//usage(argv[0]);
-				return;
+				exit(1);
 			}
 		}
 	}
@@ -86,7 +85,7 @@ void deinit_game() {
 	fclose(logfile);
 }
 
-void draw_screen() {
+static void draw_screen() {
 	static int last_res = 1;
 	int x, y, w, h, ox = 0, oy = 0;
 	int hi_res = c8_resolution(&w, &h);
@@ -175,7 +174,7 @@ int render(double elapsedSeconds) {
 		*/
 		if(keys[KCODE(F8)]) {
 			bm_set_color(screen, 0x202020);
-		bm_fillrect(screen, 0, SCREEN_HEIGHT - 24, SCREEN_WIDTH, SCREEN_HEIGHT);
+			bm_fillrect(screen, 0, SCREEN_HEIGHT - 24, SCREEN_WIDTH, SCREEN_HEIGHT);
 			running = 1;
 			return 1;
 		}
