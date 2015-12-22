@@ -1,9 +1,8 @@
 /*1 chip8.h
  *# This header provides the public API for the core of the CHIP-8 toolkit.\n
  *#
- *# The core of the CHIP-8 interpreter is written to be platform independent.\n
- *#
- *# To use this platform independent core, one needs to use this API to create
+ *# The core of the CHIP-8 interpreter is written to be platform independent.
+ *# To use this core, one needs to use this API to create
  *# a platform-specific {/implementation/}. This {/implementation/} should do the 
  *# following:
  *{
@@ -68,14 +67,14 @@ void c8_step();
 
 /*@ int c8_ended(); 
  *# Returns true if the interpreter has ended.\n
- *# The interpreter has ended if a 00FD instruction has been encountered.\n
- *# The 00FD instruction is actually SuperChip specific.
+ *# The interpreter has ended if a {*00FD*} instruction has been encountered.\n
+ *# The {*00FD*} instruction is actually SuperChip specific.
  */
 int c8_ended();
 
 /*@ int c8_waitkey(); 
  *# Returns true if the interpreter is waiting for keyboard input.\n
- *# The Fx0A instruction is the one that waits for a specific key to be pressed.
+ *# The {*Fx0A*} instruction is the one that waits for a specific key to be pressed.
  */
 int c8_waitkey();
 
@@ -115,6 +114,15 @@ uint16_t c8_prog_size();
  */
 uint8_t c8_get_reg(uint8_t r);
 
+/*@ int (*c8_rand)();
+ *# Points to the function that should be used to generate 
+ *# random numbers for the {*Cxkk*} instruction.\n
+ *# The default value points to {{rand()}} in the standard library. 
+ *# This implies that {{srand()}} should be called at the 
+ *# start of the program.
+ */
+int (*c8_rand)();
+
 /*2 Graphics 
  *# The {/implementation/} should provide a platform specific way for the interpreter
  *# core to draw its graphics.\n
@@ -143,7 +151,7 @@ int c8_get_pixel(int x, int y);
 
 /*2 Keyboard routines 
  *# The {/implementation/} should use these functions to tell the interpreter 
- *# about changes in the keyboard state.
+ *# about changes in the keyboard state:
  */
 
 /*@ void c8_key_down(uint8_t k); 

@@ -241,8 +241,6 @@ int APIENTRY WinMain(
     WNDCLASS wc;
     HWND hwnd;
 
-	srand(time(NULL));
-
     ZeroMemory(&wc, sizeof wc);
     wc.hInstance     = hInstance;
     wc.lpszClassName = szAppName;

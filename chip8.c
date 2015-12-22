@@ -16,35 +16,44 @@ platform dependent should be moved elsewhere.
 
 /* Where in RAM to load the font.
 	The font should be in the first 512 bytes of RAM (see [2]),
-	so FONT_OFFSET should be less than or equal to 0x1B0
- */
+	so FONT_OFFSET should be less than or equal to 0x1B0 */
 #define FONT_OFFSET		0x1B0
 #define HFONT_OFFSET	0x110
 
 int c8_verbose = 0;
 
-static uint8_t V[16];
-static uint8_t RAM[TOTAL_RAM];
-static uint16_t PC;
-static uint16_t I;
-static uint8_t DT, ST;
-static uint8_t SP;
-static uint16_t stack[16];
+static uint8_t V[16];          /* CHIP-8 registers */
+static uint8_t RAM[TOTAL_RAM]; /* Interpreter RAM */
+static uint16_t PC;            /* Program counter */
+static uint16_t I;             /* Index register */
+static uint8_t DT, ST;         /* Delay timer, sound timer */
 
+/* Stack, Stack pointer */
+static uint16_t stack[16];
+static uint8_t SP;
+
+/* Display memory */
 static uint8_t pixels[1024];
+
+static int screen_updated; /* Screen updated */
+static int hi_res; /* Hi-res mode? */
+
+/* Keypad buffer */
 static uint16_t keys;
 
-static int hi_res;
-static int screen_updated;
-
+/* HP48 flags for SuperChip Fx75 and Fx85 instructions */
 static uint8_t hp48_flags[16];
 
+/* Text output function */
 char c8_message_text[MAX_MESSAGE_TEXT];
 static int _puts_default(const char* s) {
 	return fputs(s, stdout);
 }
 int (*c8_puts)(const char* s) = _puts_default;
 
+int (*c8_rand)() = rand;
+
+/* Standard 4x5 font */
 static uint8_t font[] = {
 /* '0' */ 0xF0, 0x90, 0x90, 0x90, 0xF0,
 /* '1' */ 0x20, 0x60, 0x20, 0x20, 0x70,
@@ -64,6 +73,7 @@ static uint8_t font[] = {
 /* 'F' */ 0xF0, 0x80, 0xF0, 0x80, 0x80,
 };
 
+/* SuperChip hi-res 8x10 font */
 static uint8_t hfont[] = {
 /* '0' */ 0x7C, 0x82, 0x82, 0x82, 0x82, 0x82, 0x82, 0x82, 0x7C, 0x00,
 /* '1' */ 0x08, 0x18, 0x38, 0x08, 0x08, 0x08, 0x08, 0x08, 0x3C, 0x00,
@@ -272,7 +282,7 @@ void c8_step() {
 			break;
 		case 0xC000:
 			/* RND Vx, kk */
-			V[x] = rand() & kk; /* FIXME: Better RNG? */
+			V[x] = c8_rand() & kk; /* FIXME: Better RNG? */
 			break;
 		case 0xD000: {
 			/* DRW Vx, Vy, nibble */

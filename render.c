@@ -27,6 +27,8 @@ void init_game(int argc, char *argv[]) {
 	logfile = fopen("gdi.log", "w");
 	c8_verbose++;
 
+	srand(time(NULL));
+	
 	c8_reset();
 
 	int opt;
