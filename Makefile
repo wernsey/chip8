@@ -5,8 +5,20 @@
 
 CFLAGS=-c -Wall
 LDFLAGS=
+ifeq ($(BUILD),debug)
+# Debug
+CFLAGS += -O0 -g
+LDFLAGS +=
+else
+# Release mode
+CFLAGS += -O2 -DNDEBUG
+LDFLAGS += -s
+endif
 
 all: c8asm.exe c8dasm.exe chip8.exe docs
+
+debug:
+	make BUILD=debug
 
 c8asm.exe: asmmain.o c8asm.o chip8.o getopt.o
 	$(CC) $(LDFLAGS) -o $@ $^
@@ -38,4 +50,4 @@ chip8.html: chip8.h doc.awk
 
 clean:
 	-rm -f *.o
-	-rm -rf c8asm.exe c8dasm.exe runner.exe chip8.exe
+	-rm -rf c8asm.exe c8dasm.exe chip8.exe
