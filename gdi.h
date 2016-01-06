@@ -11,6 +11,10 @@
 #define WINDOW_HEIGHT 120
 */
 
+extern void init_game(int argc, char *argv[]);
+extern void deinit_game();
+extern int render(double elapsedSeconds);
+
 #define FPS 66
 
 /* You can find the values for
@@ -40,5 +44,7 @@
 extern Bitmap *screen;
 
 extern char keys[];
+
+void exit_error(const char *msg, ...);
 
 char *read_text_file(const char *fname);

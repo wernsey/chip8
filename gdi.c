@@ -29,61 +29,28 @@ char keys[MAX_KEYS];
 
 Bitmap *screen = NULL;
 
-#if 1
-void init_game(int argc, char *argv[]);
-void deinit_game();
-extern int render(double elapsedSeconds);
-#else
-void init_game() {
-}
-void deinit_game() {
-}
-int render(double elapsedSeconds) {
-	static int x = SCREEN_WIDTH/2, y = SCREEN_HEIGHT / 2;
-
-	static int sx = SCREEN_WIDTH/2, sy = SCREEN_HEIGHT / 2, sdx, sdy;
-	static int once = 0;
-	if(!once) {
-		once = 1;
-		sdx = rand() % 3 - 1;
-		sdy = rand() % 3 - 1;
-	}
-
-	bm_set_color_s(screen, "black");
-	bm_clear(screen);
-
-	bm_set_color_s(screen, "green");
-	bm_line(screen, x - 5, y, x + 5, y);
-	bm_line(screen, x, y - 5, x, y + 5);
-
-	if(keys[VK_RIGHT]) x++;
-	if(keys[VK_LEFT]) x--;
-	if(keys[VK_DOWN]) y++;
-	if(keys[VK_UP]) y--;
-
-	bm_rect(screen, sx - 5, sy - 5, sx + 5, sy + 5);
-	sx += sdx;
-	if(sx < 0 || sx > SCREEN_WIDTH)
-		sdx = -sdx;
-	sy += sdy;
-	if(sy < 0 || sy > SCREEN_HEIGHT)
-		sdy = -sdy;
-
-	bm_set_color_s(screen, "gray");
-	bm_printf(screen, 9, 9, "Hello World");
-	bm_set_color_s(screen, "white");
-	bm_printf(screen, 10, 10, "Hello World");
-	bm_printf(screen, 2, 2, "%f", elapsedSeconds);
-
-	return 1;
-}
-#endif
-
 void clear_keys() {
 	int i;
 	for(i = 0; i < MAX_KEYS; i++) {
 		keys[i] = 0;
 	}
+}
+
+void exit_error(const char *msg, ...) {		
+	char message_text[256];
+	if(msg) {
+		va_list arg;
+		va_start (arg, msg);
+		vsnprintf (message_text, (sizeof message_text) - 1, msg, arg);		
+		va_end (arg);
+	}
+	MessageBox(
+		NULL,
+		message_text,
+		"Error",
+		MB_ICONERROR | MB_OK
+	);
+	exit(1);
 }
 
 /** WIN32 and GDI routines below this line *****************************************/
@@ -95,14 +62,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	static HDC hdc, hdcMem;
 	static HBITMAP hbmOld, hbmp;
 	static Bitmap *bmp;
-	/*
-	Higher resolution timers:
+	
+	/* Todo: I didn't bother with higher resolution timers:
 	https://msdn.microsoft.com/en-us/library/dn553408(v=vs.85).aspx */
 	static clock_t startTime;
 
 #define MAX_ARGS	16
-	static int argc = 0, i;
+	static int argc = 0;
 	static char *argv[MAX_ARGS];
+	static LPTSTR cmdl;
 
     switch (message) {
 
@@ -141,24 +109,27 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 			screen = bmp;
 
-			SetTimer(hwnd, IDT_TIMER1, 1000/FPS, (TIMERPROC) NULL);
-
 			clear_keys();
 
 			/* This is very dirty. Should use CommandLineToArgvW(), but the
 			header includes and the LPCWSTR proved problematic.
 			The below is sufficient for what I want to do, but won't deal with
-			quoted parameters or non-ascii etc.*/
-			LPTSTR cmdl = strdup(GetCommandLine());
+			quoted parameters or non-ascii etc.
+			
+			For an idea of how complex it can get, see:
+			http://i1.blogs.msdn.com/b/oldnewthing/archive/2010/09/17/10063629.aspx
+			http://www.windowsinspired.com/how-a-windows-programs-splits-its-command-line-into-individual-arguments/			
+			*/
+			cmdl = strdup(GetCommandLine());
 			char *arg = strtok(cmdl, " \t");
-			while(arg && argc < 16) {
-				argv[argc++] = strdup(arg);
+			while(arg && argc < MAX_ARGS) {
+				argv[argc++] = arg;
 				arg = strtok(NULL, " ");
 			}
-			free(cmdl);
 
 			init_game(argc, argv);
 
+			SetTimer(hwnd, IDT_TIMER1, 1000/FPS, (TIMERPROC) NULL);
 			startTime = clock();
 
             } break;
@@ -166,9 +137,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         case WM_DESTROY:
 			deinit_game();
 
-			for(i = 0; i < argc; i++) {
-				free(argv[i]);
-			}
+			free(cmdl);
 
 			KillTimer(hwnd, IDT_TIMER1);
 			SelectObject( hdcMem, hbmOld );
