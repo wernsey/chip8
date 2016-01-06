@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #include "chip8.h"
-#include "getopt.h"
 
 static void usage(const char *name) {
 	printf("usage: %s [options] infile.bin\n", name);

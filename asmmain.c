@@ -2,8 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-
-#include "getopt.h"
+#include <unistd.h>
 
 #include "chip8.h"
 

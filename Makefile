@@ -20,13 +20,13 @@ all: c8asm.exe c8dasm.exe chip8.exe docs
 debug:
 	make BUILD=debug
 
-c8asm.exe: asmmain.o c8asm.o chip8.o getopt.o
+c8asm.exe: asmmain.o c8asm.o chip8.o
 	$(CC) $(LDFLAGS) -o $@ $^
 
-c8dasm.exe: dasmmain.o c8dasm.o chip8.o getopt.o
+c8dasm.exe: dasmmain.o c8dasm.o chip8.o
 	$(CC) $(LDFLAGS) -o $@ $^
 
-chip8.exe: gdi.o render.o chip8.o bmp.o getopt.o
+chip8.exe: gdi.o render.o chip8.o bmp.o
 	$(CC) $(LDFLAGS) -o $@ $^ -mwindows
 
 .c.o:
@@ -36,9 +36,9 @@ c8asm.o: c8asm.c chip8.h
 c8dasm.o: c8dasm.c chip8.h
 chip8.o: chip8.c chip8.h
 bmp.o: bmp.c bmp.h
-asmmain.o: asmmain.c chip8.h getopt.h
-dasmmain.o: dasmmain.c chip8.h getopt.h
-render.o: render.c chip8.h gdi.h bmp.h getopt.h
+asmmain.o: asmmain.c chip8.h
+dasmmain.o: dasmmain.c chip8.h
+render.o: render.c chip8.h gdi.h bmp.h
 gdi.o: gdi.c gdi.h bmp.h
 
 docs: chip8.html

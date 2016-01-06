@@ -2,13 +2,13 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <windows.h>
 
 #include "chip8.h"
 #include "bmp.h"
 #include "gdi.h"
-#include "getopt.h"
 
 static Bitmap *background;
 
@@ -39,11 +39,14 @@ static void usage() {
 void init_game(int argc, char *argv[]) {
 
 	const char *infile = NULL;
+
 	c8_puts = gdi_puts;
 
 	logfile = fopen("gdi.log", "w");
 	c8_verbose++;
 
+	c8_message("Initializing...\n");
+	
 	srand(time(NULL));
 	
 	c8_reset();
@@ -62,11 +65,14 @@ void init_game(int argc, char *argv[]) {
 		}
 	}
 	if(optind >= argc) {
-        exit_error("You need to specify a CHIP-8 file");
+		c8_message("No input file specified.\n");
+        exit_error("You need to specify a CHIP-8 file.");
     }
 	infile = argv[optind++];
 
+	c8_message("Loading %s...\n", infile);
 	if(!c8_load_file(infile)) {
+		c8_message("Unable to load '%s': %s\n", infile, strerror(errno));
 		exit_error("Unable to load '%s': %s\n", infile, strerror(errno));
 	}
 
@@ -88,9 +94,12 @@ void init_game(int argc, char *argv[]) {
 	}
 	bm_blit(screen, 0, 0, background, 0, 0, 128, 64);
 	draw_screen();
+	
+	c8_message("Initialized.\n");
 }
 
 void deinit_game() {
+	c8_message("Done.\n");
 	fclose(logfile);
 }
 
