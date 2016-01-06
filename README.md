@@ -9,7 +9,7 @@ The syntax of the assembler and disassembler is based on the syntax described in
 [Cowgod's Chip-8 Technical Reference v1.0](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM), by Thomas P. Greene
 
 Frédéric Devernay's [SVision-8 website](http://devernay.free.fr/hacks/chip8/) has a wealth of information.
-The [GAMES.zip](http://devernay.free.fr/hacks/chip8/GAMES.zip) file contains several CHIP-8 games.
+He also has a collection of CHIP-8 games and programs in his [GAMES.zip](http://devernay.free.fr/hacks/chip8/GAMES.zip).
 
 ## Implementation Notes
 

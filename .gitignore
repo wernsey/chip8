@@ -1,6 +1,7 @@
 *.o
 *.exe
 *.log
+*.bak
 
 # Generated documentation:
 chip8.html

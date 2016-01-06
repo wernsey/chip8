@@ -10,6 +10,13 @@
 #include "gdi.h"
 #include "getopt.h"
 
+static Bitmap *background;
+
+static int speed = 10;
+static int fg_color = 0xAAAAFF;
+static int bg_color = 0x000055;
+static int running = 1;
+
 static FILE *logfile = NULL;
 static int gdi_puts(const char* s) {
 	if(!logfile)
@@ -17,7 +24,17 @@ static int gdi_puts(const char* s) {
 	return fputs(s, logfile);
 }
 
-static Bitmap *background;
+static void draw_screen();
+
+static void usage() {
+	exit_error("Use these command line variables:\n"
+				"  -f fg  : Foreground color\n"
+				"  -b bg  : Background color\n"
+				"  -s spd : Specify the speed\n"
+				"  -d     : Debug mode\n"
+				"  -v     : increase verbosity"
+				);
+}
 
 void init_game(int argc, char *argv[]) {
 
@@ -32,36 +49,25 @@ void init_game(int argc, char *argv[]) {
 	c8_reset();
 
 	int opt;
-	while((opt = getopt(argc, argv, "v?")) != -1) {
+	while((opt = getopt(argc, argv, "f:b:s:dv?")) != -1) {
 		switch(opt) {
-			case 'v': {
-				c8_verbose++;
-			} break;
+			case 'v': c8_verbose++; break;
+			case 'f': fg_color = bm_color_atoi(optarg); break;
+			case 'b': bg_color = bm_color_atoi(optarg); break;
+			case 's': speed = atoi(optarg); if(speed < 1) speed = 10; break;
+			case 'd': running = 0; break;
 			case '?' : {
-				exit(1);
+				usage();
 			}
 		}
 	}
 	if(optind >= argc) {
-        MessageBox(
-			NULL,
-			"You need to specify a CHIP-8 file",
-			"Load Error",
-			MB_ICONERROR | MB_OK
-		);
-		exit(1);
+        exit_error("You need to specify a CHIP-8 file");
     }
 	infile = argv[optind++];
 
 	if(!c8_load_file(infile)) {
-		c8_message("error:Unable to load '%s': %s\n", infile, strerror(errno));
-		MessageBox(
-			NULL,
-			"Unable to load CHIP-8 file",
-			"Load Error",
-			MB_ICONERROR | MB_OK
-		);
-		exit(1);
+		exit_error("Unable to load '%s': %s\n", infile, strerror(errno));
 	}
 
 	bm_set_color(screen, 0x202020);
@@ -81,6 +87,7 @@ void init_game(int argc, char *argv[]) {
 			bm_set(background, j, i, c);
 	}
 	bm_blit(screen, 0, 0, background, 0, 0, 128, 64);
+	draw_screen();
 }
 
 void deinit_game() {
@@ -102,9 +109,9 @@ static void draw_screen() {
 	for(y = 0; y < h; y++) {
 		for(x = 0; x < w; x++) {
 			if(c8_get_pixel(x,y))
-				bm_set(screen, x + ox, y + oy, 0xAAAAFF);
+				bm_set(screen, x + ox, y + oy, fg_color);
 			else
-				bm_set(screen, x + ox, y + oy, 0x000055);
+				bm_set(screen, x + ox, y + oy, bg_color);
 		}
 	}
 	last_res = hi_res;
@@ -113,7 +120,6 @@ static void draw_screen() {
 int render(double elapsedSeconds) {
 	int i;
 	static double timer = 0.0;
-	static int running = 1;
 
 	/* These are the same keybindings Octo [10]'s  */
 	int keymapping[16] = {
@@ -157,7 +163,7 @@ int render(double elapsedSeconds) {
 			running = 0;
 		}
 
-		for(i = 0; i < 11; i++) {
+		for(i = 0; i < speed; i++) {			
 			if(c8_ended())
 				return 0;
 			else if(c8_waitkey() && !key_pressed)
