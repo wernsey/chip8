@@ -12,6 +12,7 @@ http://forums.codeguru.com/showthread.php?487633-32-bit-DIB-from-24-bit-bitmap
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <ctype.h>
 #include <windows.h>
 
 #include "bmp.h"
@@ -55,6 +56,7 @@ void exit_error(const char *msg, ...) {
 
 /** WIN32 and GDI routines below this line *****************************************/
 
+static int split_cmd_line(char *cmdl, char *argv[], int max);
 static void CenterWindow(HWND hWnd);
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -111,21 +113,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
             clear_keys();
 
-            /* This is very dirty. Should use CommandLineToArgvW(), but the
-            header includes and the LPCWSTR proved problematic.
-            The below is sufficient for what I want to do, but won't deal with
-            quoted parameters or non-ascii etc.
-
-            For an idea of how complex it can get, see:
-            http://i1.blogs.msdn.com/b/oldnewthing/archive/2010/09/17/10063629.aspx
-            http://www.windowsinspired.com/how-a-windows-programs-splits-its-command-line-into-individual-arguments/
-            */
             cmdl = strdup(GetCommandLine());
-            char *arg = strtok(cmdl, " \t");
-            while(arg && argc < MAX_ARGS) {
-                argv[argc++] = arg;
-                arg = strtok(NULL, " ");
-            }
+            argc = split_cmd_line(cmdl, argv, MAX_ARGS);
 
             init_game(argc, argv);
 
@@ -305,4 +294,73 @@ char *read_text_file(const char *fname) {
     fclose(f);
     str[len] = '\0';
     return str;
+}
+
+
+/*
+Alternative to CommandLineToArgvW().
+I used a compiler where shellapi.h was not available,
+so this function breaks it down according to the last set of rules in
+http://i1.blogs.msdn.com/b/oldnewthing/archive/2010/09/17/10063629.aspx
+*/
+int split_cmd_line(char *cmdl, char *argv[], int max) {
+
+    int argc = 0;
+    char *p = cmdl, *q = p, *arg = p;
+    int state = 1;
+    while(state) {
+        switch(state) {
+            case 1:
+                if(argc == max) return argc;
+                if(!*p) {
+                    state = 0;
+                } else if(isspace(*p)) {
+                    *q++ = *p++;
+                } else if(*p == '\"') {
+                    state = 2;
+                    *q++ = *p++;
+                    arg = q;
+                } else {
+                    state = 3;
+                    arg = q;
+                    *q++ = *p++;
+                }
+            break;
+            case 2:
+                if(!*p) {
+                    argv[argc++] = arg;
+                    *q++ = '\0';
+                    state = 0;
+                } else if(*p == '\"') {
+                    if(p[1] == '\"') {
+                        state = 2;
+                        *q++ = *p;
+                        p+=2;
+                    } else {
+                        state = 1;
+                        argv[argc++] = arg;
+                        *q++ = '\0';
+                        p++;
+                    }
+                } else {
+                    *q++ = *p++;
+                }
+            break;
+            case 3:
+                if(!*p) {
+                    state = 0;
+                    argv[argc++] = arg;
+                    *q++ = '\0';
+                } else if(isspace(*p)) {
+                    state = 1;
+                    argv[argc++] = arg;
+                    *q++ = '\0';
+                    p++;
+                } else {
+                    *q++ = *p++;
+                }
+            break;
+        }
+    }
+    return argc;
 }
