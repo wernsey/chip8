@@ -1,6 +1,5 @@
 /*
->tcc gdi.c bmp.c
-Built from the HELLO_WIN.C example in tcc
+Evolved from the HELLO_WIN.C example in tcc
 References:
 https://www.daniweb.com/software-development/cpp/code/241875/fast-animation-with-the-windows-gdi
 https://www-user.tu-chemnitz.de/~heha/petzold/ch14e.htm
@@ -10,25 +9,24 @@ http://forums.codeguru.com/showthread.php?487633-32-bit-DIB-from-24-bit-bitmap
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
-#include <math.h>
 #include <ctype.h>
+#include <time.h>
 #include <windows.h>
 
 #include "bmp.h"
 #include "gdi.h"
 
-char szAppName[] = APPNAME;
-char szTitle[]   = APPNAME;
+static char szAppName[] = APPNAME;
+static char szTitle[]   = APPNAME;
 
-#define IDT_TIMER1  1001
+Bitmap *screen = NULL;
 
 /* Virtual-Key Codes here:
 https://msdn.microsoft.com/en-us/library/windows/desktop/dd375731(v=vs.85).aspx */
 #define MAX_KEYS 256
 char keys[MAX_KEYS];
 
-Bitmap *screen = NULL;
+static int quit;
 
 void clear_keys() {
     int i;
@@ -57,17 +55,12 @@ void exit_error(const char *msg, ...) {
 /** WIN32 and GDI routines below this line *****************************************/
 
 static int split_cmd_line(char *cmdl, char *argv[], int max);
-static void CenterWindow(HWND hWnd);
+static void FitWindow(HWND hWnd);
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     static HDC hdc, hdcMem;
     static HBITMAP hbmOld, hbmp;
-    static Bitmap *bmp;
-
-    /* Todo: I didn't bother with higher resolution timers:
-    https://msdn.microsoft.com/en-us/library/dn553408(v=vs.85).aspx */
-    static clock_t startTime;
 
 #define MAX_ARGS    16
     static int argc = 0;
@@ -78,8 +71,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
         case WM_CREATE: {
             unsigned char *pixels;
-
-            CenterWindow(hwnd);
 
             BITMAPINFO bmi;
             ZeroMemory(&bmi, sizeof bmi);
@@ -105,11 +96,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             hdcMem = CreateCompatibleDC( hdc );
             hbmOld = (HBITMAP)SelectObject( hdcMem, hbmp );
 
-            bmp = bm_bind(SCREEN_WIDTH, SCREEN_HEIGHT, pixels);
-            bm_set_color_s(bmp, "black");
-            bm_clear(bmp);
-
-            screen = bmp;
+            screen = bm_bind(SCREEN_WIDTH, SCREEN_HEIGHT, pixels);
+            bm_set_color_s(screen, "black");
+            bm_clear(screen);
 
             clear_keys();
 
@@ -118,44 +107,35 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
             init_game(argc, argv);
 
-            SetTimer(hwnd, IDT_TIMER1, 1000/FPS, (TIMERPROC) NULL);
-            startTime = clock();
-
             } break;
 
         case WM_DESTROY:
+            quit = 1;
             deinit_game();
 
             free(cmdl);
 
-            KillTimer(hwnd, IDT_TIMER1);
+            bm_unbind(screen);
             SelectObject( hdcMem, hbmOld );
             DeleteDC( hdc );
-            bm_unbind(bmp);
+            screen = NULL;
             PostQuitMessage(0);
             break;
 
-        case WM_TIMER:
-            if(wParam == IDT_TIMER1) {
-                clock_t endTime = clock();
-                double elapsedSeconds = (double)(endTime - startTime) / CLOCKS_PER_SEC;
-                if(!render(elapsedSeconds)) {
-                    DestroyWindow(hwnd);
-                }
-                InvalidateRect(hwnd, 0, TRUE);
-            }
-            break;
-
         case WM_RBUTTONUP:
+#if 0
             DestroyWindow(hwnd);
+#endif
             break;
 
         case WM_KEYDOWN:
             if (wParam < MAX_KEYS) {
                 keys[wParam] = 1;
             }
+#if 1
             if (VK_ESCAPE == wParam)
                 DestroyWindow(hwnd);
+#endif
             break;
 
         case WM_KEYUP:
@@ -166,6 +146,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
         case WM_PAINT:
         {
+            if(!screen) break;
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint( hwnd, &ps );
 #if WINDOW_WIDTH == SCREEN_WIDTH && WINDOW_HEIGHT == SCREEN_HEIGHT
@@ -174,13 +155,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             StretchBlt(hdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, hdcMem, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SRCCOPY);
 #endif
             EndPaint( hwnd, &ps );
-            startTime = clock();
             break;
         }
         /* Don't erase the background - it causes flickering
             http://stackoverflow.com/a/14153470/115589 */
-        case WM_ERASEBKGND:
-            return 1;
+        // case WM_ERASEBKGND:
+            // return 1;
 
         default:
             return DefWindowProc(hwnd, message, wParam, lParam);
@@ -198,6 +178,7 @@ int APIENTRY WinMain(
     MSG msg;
     WNDCLASS wc;
     HWND hwnd;
+    double elapsedSeconds = 0.0;
 
     ZeroMemory(&wc, sizeof wc);
     wc.hInstance     = hInstance;
@@ -214,7 +195,8 @@ int APIENTRY WinMain(
     hwnd = CreateWindow(
         szAppName,
         szTitle,
-        (WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX) | WS_VISIBLE,
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        //WS_POPUP, // For no border/titlebar etc
         CW_USEDEFAULT,
         CW_USEDEFAULT,
         WINDOW_WIDTH,
@@ -227,75 +209,63 @@ int APIENTRY WinMain(
     if (NULL == hwnd)
         return 0;
 
-    /* Make sure the client area fits */
-    RECT rcClient, rcWindow;
-    POINT ptDiff;
-    GetClientRect( hwnd, &rcClient );
-    GetWindowRect( hwnd, &rcWindow );
-    ptDiff.x = (rcWindow.right - rcWindow.left) - rcClient.right;
-    ptDiff.y = (rcWindow.bottom - rcWindow.top) - rcClient.bottom;
-    MoveWindow( hwnd, rcWindow.left, rcWindow.top, WINDOW_WIDTH + ptDiff.x, WINDOW_HEIGHT + ptDiff.y, 0);
-    UpdateWindow( hwnd );
+    FitWindow(hwnd);
 
-    while (GetMessage(&msg, NULL, 0, 0) > 0) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+    ShowWindow(hwnd , SW_SHOW);
+
+    /* Todo: I didn't bother with higher resolution timers:
+    https://msdn.microsoft.com/en-us/library/dn553408(v=vs.85).aspx */
+
+    quit = 0;
+    for(;;) {
+        clock_t startTime, endTime;
+        startTime = clock();
+        while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE) > 0) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+        if(quit) break;
+
+        Sleep(1);
+        endTime = clock();
+        elapsedSeconds += (double)(endTime - startTime) / CLOCKS_PER_SEC;
+        if(elapsedSeconds > 1.0/FPS) {
+            if(!render(elapsedSeconds)) {
+                DestroyWindow(hwnd);
+            }
+            InvalidateRect(hwnd, 0, TRUE);
+            elapsedSeconds = 0.0;
+        }
     }
 
     return msg.wParam;
 }
 
-static void CenterWindow(HWND hwnd_self)
-{
-    HWND hwnd_parent;
-    RECT rw_self, rc_parent, rw_parent;
-    int xpos, ypos;
+/* Make sure the client area fits; center the window in the process */
+static void FitWindow(HWND hwnd) {
+    RECT rcClient, rwClient;
+    POINT ptDiff;
+    HWND hwndParent;
+    RECT rcParent, rwParent;
+    POINT ptPos;
 
-    hwnd_parent = GetParent(hwnd_self);
-    if (NULL == hwnd_parent)
-        hwnd_parent = GetDesktopWindow();
+    GetClientRect(hwnd, &rcClient);
+    GetWindowRect(hwnd, &rwClient);
+    ptDiff.x = (rwClient.right - rwClient.left) - rcClient.right;
+    ptDiff.y = (rwClient.bottom - rwClient.top) - rcClient.bottom;
 
-    GetWindowRect(hwnd_parent, &rw_parent);
-    GetClientRect(hwnd_parent, &rc_parent);
-    GetWindowRect(hwnd_self, &rw_self);
+    hwndParent = GetParent(hwnd);
+    if (NULL == hwndParent)
+        hwndParent = GetDesktopWindow();
 
-    xpos = rw_parent.left + (rc_parent.right + rw_self.left - rw_self.right) / 2;
-    ypos = rw_parent.top + (rc_parent.bottom + rw_self.top - rw_self.bottom) / 2;
+    GetWindowRect(hwndParent, &rwParent);
+    GetClientRect(hwndParent, &rcParent);
 
-    SetWindowPos(
-        hwnd_self, NULL,
-        xpos, ypos, 0, 0,
-        SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE
-        );
+    ptPos.x = rwParent.left + (rcParent.right - WINDOW_WIDTH) / 2;
+    ptPos.y = rwParent.top + (rcParent.bottom - WINDOW_HEIGHT) / 2;
+
+    MoveWindow(hwnd, ptPos.x, ptPos.y, WINDOW_WIDTH + ptDiff.x, WINDOW_HEIGHT + ptDiff.y, 0);
 }
-
-
-char *read_text_file(const char *fname) {
-    FILE *f;
-    long len,r;
-    char *str;
-
-    if(!(f = fopen(fname, "rb")))
-        return NULL;
-
-    fseek(f, 0, SEEK_END);
-    len = ftell(f);
-    rewind(f);
-
-    if(!(str = malloc(len+2)))
-        return NULL;
-    r = fread(str, 1, len, f);
-
-    if(r != len) {
-        free(str);
-        return NULL;
-    }
-
-    fclose(f);
-    str[len] = '\0';
-    return str;
-}
-
 
 /*
 Alternative to CommandLineToArgvW().
@@ -303,7 +273,7 @@ I used a compiler where shellapi.h was not available,
 so this function breaks it down according to the last set of rules in
 http://i1.blogs.msdn.com/b/oldnewthing/archive/2010/09/17/10063629.aspx
 */
-int split_cmd_line(char *cmdl, char *argv[], int max) {
+static int split_cmd_line(char *cmdl, char *argv[], int max) {
 
     int argc = 0;
     char *p = cmdl, *q = p, *arg = p;

@@ -6,10 +6,6 @@
 #define SCREEN_HEIGHT   (64 + 24)
 #define WINDOW_WIDTH 	SCREEN_WIDTH * 2
 #define WINDOW_HEIGHT 	SCREEN_HEIGHT * 2
-/*
-#define WINDOW_WIDTH 160
-#define WINDOW_HEIGHT 120
-*/
 
 extern void init_game(int argc, char *argv[]);
 extern void deinit_game();
@@ -43,8 +39,7 @@ extern int render(double elapsedSeconds);
 
 extern Bitmap *screen;
 
+/* See the KEY_* defines above */
 extern char keys[];
 
 void exit_error(const char *msg, ...);
-
-char *read_text_file(const char *fname);
