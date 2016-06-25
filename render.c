@@ -191,7 +191,7 @@ int render(double elapsedSeconds) {
 		*/
 		if(keys[KCODE(F8)]) {
 			bm_set_color(screen, 0x202020);
-			bm_fillrect(screen, 0, SCREEN_HEIGHT - 24, SCREEN_WIDTH, SCREEN_HEIGHT);
+			bm_fillrect(screen, 0, screen->h - 24, screen->w, screen->h);
 			running = 1;
 			return 1;
 		}
@@ -210,11 +210,11 @@ int render(double elapsedSeconds) {
 		uint16_t pc = c8_get_pc();
 		uint16_t opcode = c8_opcode(pc);
 		bm_set_color(screen, 0x202020);
-		bm_fillrect(screen, 0, SCREEN_HEIGHT - 24, SCREEN_WIDTH, SCREEN_HEIGHT);
+		bm_fillrect(screen, 0, screen->h - 24, screen->w, screen->h);
 		bm_set_color(screen, 0xFFFFFF);
-		bm_printf(screen, 1, SCREEN_HEIGHT - 24, "%03X %04X", pc, opcode);
+		bm_printf(screen, 1, screen->h - 24, "%03X %04X", pc, opcode);
 		for(i = 0; i < 16; i++) {
-			bm_printf(screen, (i & 0x07) * 16, (i >> 3) * 8 + SCREEN_HEIGHT - 16, "%02X", c8_get_reg(i));
+			bm_printf(screen, (i & 0x07) * 16, (i >> 3) * 8 + screen->h - 16, "%02X", c8_get_reg(i));
 		}
 	}
 

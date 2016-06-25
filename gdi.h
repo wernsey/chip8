@@ -2,16 +2,22 @@
 
 #define APPNAME "Win32/GDI CHIP-8 Machine"
 
+#define EPX_SCALE		0
+
 #define SCREEN_WIDTH    128
 #define SCREEN_HEIGHT   (64 + 24)
-#define WINDOW_WIDTH 	SCREEN_WIDTH * 2
-#define WINDOW_HEIGHT 	SCREEN_HEIGHT * 2
+
+#define VSCREEN_WIDTH    (SCREEN_WIDTH * (EPX_SCALE?2:1))
+#define VSCREEN_HEIGHT   (SCREEN_HEIGHT * (EPX_SCALE?2:1))
+#define WINDOW_WIDTH 	(VSCREEN_WIDTH * 1)
+#define WINDOW_HEIGHT 	(VSCREEN_HEIGHT * 1)
+
 
 extern void init_game(int argc, char *argv[]);
 extern void deinit_game();
 extern int render(double elapsedSeconds);
 
-#define FPS 66
+#define FPS 33
 
 /* You can find the values for
    various keys in winuser.h */

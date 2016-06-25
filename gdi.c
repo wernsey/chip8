@@ -28,6 +28,10 @@ char keys[MAX_KEYS];
 
 static int quit;
 
+#if EPX_SCALE
+static Bitmap *scale_epx_i(Bitmap *in, Bitmap *out);
+#endif
+
 void clear_keys() {
     int i;
     for(i = 0; i < MAX_KEYS; i++) {
@@ -62,6 +66,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     static HDC hdc, hdcMem;
     static HBITMAP hbmOld, hbmp;
 
+#if EPX_SCALE
+	static Bitmap *epx = NULL;
+#endif
+
 #define MAX_ARGS    16
     static int argc = 0;
     static char *argv[MAX_ARGS];
@@ -75,8 +83,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             BITMAPINFO bmi;
             ZeroMemory(&bmi, sizeof bmi);
             bmi.bmiHeader.biSize = sizeof(BITMAPINFO);
-            bmi.bmiHeader.biWidth = SCREEN_WIDTH;
-            bmi.bmiHeader.biHeight =  -SCREEN_HEIGHT; // Order pixels from top to bottom
+            bmi.bmiHeader.biWidth = VSCREEN_WIDTH;
+            bmi.bmiHeader.biHeight =  -VSCREEN_HEIGHT; // Order pixels from top to bottom
             bmi.bmiHeader.biPlanes = 1;
             bmi.bmiHeader.biBitCount = 32; // last byte not used, 32 bit for alignment
             bmi.bmiHeader.biCompression = BI_RGB;
@@ -96,7 +104,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             hdcMem = CreateCompatibleDC( hdc );
             hbmOld = (HBITMAP)SelectObject( hdcMem, hbmp );
 
-            screen = bm_bind(SCREEN_WIDTH, SCREEN_HEIGHT, pixels);
+#if !EPX_SCALE
+            screen = bm_bind(VSCREEN_WIDTH, VSCREEN_HEIGHT, pixels);
+#else
+			screen = bm_create(SCREEN_WIDTH, SCREEN_HEIGHT);
+            epx = bm_bind(VSCREEN_WIDTH, VSCREEN_HEIGHT, pixels);
+#endif
             bm_set_color_s(screen, "black");
             bm_clear(screen);
 
@@ -115,7 +128,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
             free(cmdl);
 
+#if !EPX_SCALE
             bm_unbind(screen);
+#else		
+			bm_free(screen);
+			bm_unbind(epx);
+#endif
             SelectObject( hdcMem, hbmOld );
             DeleteDC( hdc );
             screen = NULL;
@@ -149,18 +167,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             if(!screen) break;
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint( hwnd, &ps );
-#if WINDOW_WIDTH == SCREEN_WIDTH && WINDOW_HEIGHT == SCREEN_HEIGHT
-            BitBlt( hdc, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, hdcMem, 0, 0, SRCCOPY );
+			
+#if EPX_SCALE
+			scale_epx_i(screen, epx);
+#endif
+			
+#if WINDOW_WIDTH == VSCREEN_WIDTH && WINDOW_HEIGHT == VSCREEN_HEIGHT
+            BitBlt( hdc, 0, 0, VSCREEN_WIDTH, VSCREEN_HEIGHT, hdcMem, 0, 0, SRCCOPY );
 #else
-            StretchBlt(hdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, hdcMem, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SRCCOPY);
+            StretchBlt(hdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, hdcMem, 0, 0, VSCREEN_WIDTH, VSCREEN_HEIGHT, SRCCOPY);
 #endif
             EndPaint( hwnd, &ps );
             break;
         }
         /* Don't erase the background - it causes flickering
             http://stackoverflow.com/a/14153470/115589 */
-        // case WM_ERASEBKGND:
-            // return 1;
+        case WM_ERASEBKGND:
+            return 1;
 
         default:
             return DefWindowProc(hwnd, message, wParam, lParam);
@@ -334,3 +357,36 @@ static int split_cmd_line(char *cmdl, char *argv[], int max) {
     }
     return argc;
 }
+
+/* EPX 2x scaling */
+#if EPX_SCALE
+static Bitmap *scale_epx_i(Bitmap *in, Bitmap *out) {
+	int x, y, mx = in->w, my = in->h;
+	if(!out) return NULL;
+	if(!in) return out;
+	if(out->w < (mx << 1)) mx = (out->w - 1) >> 1;
+	if(out->h < (my << 1)) my = (out->h - 1) >> 1;
+	for(y = 0; y < my; y++) {
+		for(x = 0; x < mx; x++) {
+			unsigned int P = bm_get(in, x, y);
+			unsigned int A = (y > 0) ? bm_get(in, x, y - 1) : P;
+			unsigned int B = (x < in->w - 1) ? bm_get(in, x + 1, y) : P;
+			unsigned int C = (x > 0) ? bm_get(in, x - 1, y) : P;
+			unsigned int D = (y < in->h - 1) ? bm_get(in, x, y + 1) : P;
+			
+			unsigned int P1 = P, P2 = P, P3 = P, P4 = P;
+								
+			if(C == A && C != D && A != B) P1 = A;
+			if(A == B && A != C && B != D) P2 = B;
+			if(B == D && B != A && D != C) P4 = D;
+			if(D == C && D != B && C != A) P3 = C;
+						
+			bm_set(out, (x << 1), (y << 1), P1);
+			bm_set(out, (x << 1) + 1, (y << 1), P2);
+			bm_set(out, (x << 1), (y << 1) + 1, P3);
+			bm_set(out, (x << 1) + 1, (y << 1) + 1, P4);
+		}
+	}
+	return out;
+}
+#endif
