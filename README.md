@@ -70,6 +70,10 @@ bottom of the screen, along with the values of the 16 Vx registers. Press F6 to 
 * [11] Octo SuperChip document, John Earnest, https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/SuperChip.md
 * [12] http://www.codeslinger.co.uk/pages/projects/chip8/primitive.html
 
+## TODO
+
+- [ ] FIXME: The `speed` could be handled better.
+
 ## License
 
 These sources are provided under the terms of the unlicense:

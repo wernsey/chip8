@@ -43,11 +43,13 @@ gdi.o: gdi.c gdi.h bmp.h
 
 docs: chip8.html
 
-chip8.html: chip8.h doc.awk
-	awk -f doc.awk chip8.h > $@
+chip8.html: chip8.h comdown.awk
+	awk -f comdown.awk -v Theme=7 chip8.h > $@
 
 .PHONY : clean
 
 clean:
 	-rm -f *.o
-	-rm -rf c8asm.exe c8dasm.exe chip8.exe
+	-rm -f chip8.html
+	-rm -f c8asm.exe c8dasm.exe
+	-rm -f chip8.exe
