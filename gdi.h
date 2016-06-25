@@ -2,15 +2,15 @@
 
 #define APPNAME "Win32/GDI CHIP-8 Machine"
 
-#define EPX_SCALE		0
+#define EPX_SCALE		1
 
 #define SCREEN_WIDTH    128
 #define SCREEN_HEIGHT   (64 + 24)
 
 #define VSCREEN_WIDTH    (SCREEN_WIDTH * (EPX_SCALE?2:1))
 #define VSCREEN_HEIGHT   (SCREEN_HEIGHT * (EPX_SCALE?2:1))
-#define WINDOW_WIDTH 	(VSCREEN_WIDTH * 1)
-#define WINDOW_HEIGHT 	(VSCREEN_HEIGHT * 1)
+#define WINDOW_WIDTH 	(VSCREEN_WIDTH * 2)
+#define WINDOW_HEIGHT 	(VSCREEN_HEIGHT * 2)
 
 
 extern void init_game(int argc, char *argv[]);

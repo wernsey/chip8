@@ -10,9 +10,7 @@
 #include "bmp.h"
 #include "gdi.h"
 
-static Bitmap *background;
-
-static int speed = 10;
+static int speed = 20;
 static int fg_color = 0xAAAAFF;
 static int bg_color = 0x000055;
 static int running = 1;
@@ -79,20 +77,6 @@ void init_game(int argc, char *argv[]) {
 	bm_set_color(screen, 0x202020);
 	bm_clear(screen);
 
-	background = bm_create(128,64);
-	int i, j, c;
-	for(i = 0; i < 64; i++) {
-		c = (32 - i);
-		if(c < 0)
-			c = -c;
-		c = (32 - c) * 4;
-		c = (c >> 3) << 3;
-		c += 32;
-		c = (c << 16) | (c << 8) | c;
-		for(j = 0; j < 128; j++)
-			bm_set(background, j, i, c);
-	}
-	bm_blit(screen, 0, 0, background, 0, 0, 128, 64);
 	draw_screen();
 	
 	c8_message("Initialized.\n");
@@ -104,26 +88,27 @@ void deinit_game() {
 }
 
 static void draw_screen() {
-	static int last_res = 1;
-	int x, y, w, h, ox = 0, oy = 0;
+	int x, y, w, h, c, ox, oy;
 	int hi_res = c8_resolution(&w, &h);
 	if(!hi_res) {
-		ox = (128 - w)/2;
-		oy = (64 - h)/2;
-		if(last_res) {
-			/* resolution changed back to lowres */
-			bm_blit(screen, 0, 0, background, 0, 0, 128, 64);
+		for(y = 0; y < h; y++) {
+			for(x = 0; x < w; x++) {
+				c = c8_get_pixel(x,y)?fg_color:bg_color;
+				ox = x << 1; oy = y << 1;
+				bm_set(screen, ox, oy, c);
+				bm_set(screen, ox+1, oy, c);
+				bm_set(screen, ox, oy+1, c);
+				bm_set(screen, ox+1, oy+1, c);
+			}
+		}
+	} else {
+		for(y = 0; y < h; y++) {
+			for(x = 0; x < w; x++) {
+				c = c8_get_pixel(x,y)?fg_color:bg_color;
+				bm_set(screen, x, y, c);
+			}
 		}
 	}
-	for(y = 0; y < h; y++) {
-		for(x = 0; x < w; x++) {
-			if(c8_get_pixel(x,y))
-				bm_set(screen, x + ox, y + oy, fg_color);
-			else
-				bm_set(screen, x + ox, y + oy, bg_color);
-		}
-	}
-	last_res = hi_res;
 }
 
 int render(double elapsedSeconds) {
@@ -172,6 +157,9 @@ int render(double elapsedSeconds) {
 			running = 0;
 		}
 
+		/* FIXME: The `speed` could be handled better. As it stands it
+			is somewhat dependant on the speed of the computer it is 
+			running on */
 		for(i = 0; i < speed; i++) {			
 			if(c8_ended())
 				return 0;
