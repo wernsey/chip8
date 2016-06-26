@@ -14,15 +14,10 @@
 #include "chip8.h"
 #include "bmp.h"
 
-static int speed = 20;
+static int speed = 1200;
 static int fg_color = 0xAAAAFF;
 static int bg_color = 0x000055;
 static int running = 1;
-
-static int gdi_puts(const char* s) {
-	rlog("%s", s);
-	return 1;
-}
 
 static void draw_screen();
 
@@ -40,11 +35,7 @@ void init_game(int argc, char *argv[]) {
 
 	const char *infile = NULL;
 
-	c8_puts = gdi_puts;
-
-	c8_verbose++;
-
-	c8_message("Initializing...");
+	rlog("Initializing...");
 	
 	srand(time(NULL));
 	
@@ -64,14 +55,12 @@ void init_game(int argc, char *argv[]) {
 		}
 	}
 	if(optind >= argc) {
-		c8_message("No input file specified.");
         exit_error("You need to specify a CHIP-8 file.");
     }
 	infile = argv[optind++];
 
-	c8_message("Loading %s...", infile);
+	rlog("Loading %s...", infile);
 	if(!c8_load_file(infile)) {
-		c8_message("Unable to load '%s': %s", infile, strerror(errno));
 		exit_error("Unable to load '%s': %s", infile, strerror(errno));
 	}
 
@@ -80,11 +69,11 @@ void init_game(int argc, char *argv[]) {
 
 	draw_screen();
 	
-	c8_message("Initialized.");
+	rlog("Initialized.");
 }
 
 void deinit_game() {
-	c8_message("Done.");
+	rlog("Done.");
 }
 
 static void draw_screen() {
@@ -114,9 +103,27 @@ static void draw_screen() {
 int render(double elapsedSeconds) {
 	int i;
 	static double timer = 0.0;
-
+	
 	/* These are the same keybindings Octo [10]'s  */
 	int keymapping[16] = {
+#ifdef SDL2
+		0x1B, /* '0' -> 'x' */
+		0x1E, /* '1' -> '1' */
+		0x1F, /* '2' -> '2' */
+		0x20, /* '3' -> '3' */
+		0x14, /* '4' -> 'q' */
+		0x1A, /* '5' -> 'w' */
+		0x08, /* '6' -> 'e' */
+		0x04, /* '7' -> 'a' */
+		0x16, /* '8' -> 's' */
+		0x07, /* '9' -> 'd' */
+		0x1D, /* 'A' -> 'z' */
+		0x06, /* 'B' -> 'c' */
+		0x21, /* 'C' -> '4' */
+		0x15, /* 'D' -> 'r' */
+		0x09, /* 'E' -> 'f' */
+		0x19, /* 'F' -> 'v' */
+#else	
 		0x58, /* '0' -> 'x' */
 		0x31, /* '1' -> '1' */
 		0x32, /* '2' -> '2' */
@@ -133,6 +140,7 @@ int render(double elapsedSeconds) {
 		0x52, /* 'D' -> 'r' */
 		0x46, /* 'E' -> 'f' */
 		0x56, /* 'F' -> 'v' */
+#endif
 	};
 
 	int key_pressed = 0;
@@ -144,9 +152,9 @@ int render(double elapsedSeconds) {
 		} else
 			c8_key_up(i);
 	}
-
+	
 	timer += elapsedSeconds;
-	while(timer > 1.0/60.0) {
+	while(timer > 1.0/60.0) {	
 		c8_60hz_tick();
 		timer -= 1.0/60.0;
 	}
@@ -156,15 +164,14 @@ int render(double elapsedSeconds) {
 		if(keys[KCODE(F5)]) {
 			running = 0;
 		}
-
-		/* FIXME: The `speed` could be handled better. As it stands it
-			is somewhat dependant on the speed of the computer it is 
-			running on */
-		for(i = 0; i < speed; i++) {			
+		
+		int count = speed * elapsedSeconds;			
+		for(i = 0; i < count; i++) {			
 			if(c8_ended())
 				return 0;
-			else if(c8_waitkey() && !key_pressed)
+			else if(c8_waitkey() && !key_pressed) {
 				return 1;
+			}
 
 			c8_step();
 

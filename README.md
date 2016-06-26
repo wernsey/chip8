@@ -11,6 +11,59 @@ The syntax of the assembler and disassembler is based on the syntax described in
 Frédéric Devernay's [SVision-8 website](http://devernay.free.fr/hacks/chip8/) has a wealth of information.
 He also has a collection of CHIP-8 games and programs in his [GAMES.zip](http://devernay.free.fr/hacks/chip8/GAMES.zip).
 
+## Compilation and Usage
+
+The system was built and tested with the MinGW compiler under Windows. To compile it type `make` from the MSYS shell.
+
+
+
+To use the assembler, type
+
+    $ c8asm file.asm
+
+This will assemble `file.asm` into a binary `a.c8h`.
+
+To use the disassembler, run the command
+	
+    $ c8dasm a.ch8
+	
+where `a.ch8` is the file you want to disassemble.
+
+## Interpreter Implementations
+
+Two implementations are provided in this repository: A SDL-based implentation (<https://www.libsdl.org/>) which is intended for portability, and a native
+Windows implementation which is intended for small size and requires no third party dependencies.
+
+In both versions
+
+* `bmp.h` and `bmp.c` (together with the `fonts/` directory) is used to draw and manipulate the bitmap graphics. See also https://github.com/wernsey/bitmap
+* `render.c` implements the `init_game()`, `deinit_game()` and `render()` functions that forms the core of both implementations and 
+  demonstrates how the interpreter's API works.
+
+The `render()` function checks the keyboard and executes the interpreter a couple of times by calling `c8_step()` and
+redraws the screen if it changed. The SDL and Win32 frameworks were written in such a way that the `render()` function works
+with both with only a couple of minor modifications.
+
+The implementations feature a rudimentary debugger: Press F5 to pause a running game. The program counter and the current instruction will be displayed at the 
+bottom of the screen, along with the values of the 16 Vx registers. Press F6 to step through the program to the next instruction and F8 to resume the program.
+  
+The `Makefile` will build both versions.
+  
+### SDL Implementation
+
+The SDL-based implementation is intended for portability. The files `pocadv.c` and `pocadv.h` implement a wrapper around the SDL that
+contains the `main()` function, the SDL event loops and so on.
+
+Currently only the Windows version has been tested, but it will be ported to other platforms in the future.
+
+### Win32/GDI Implementation
+
+The native Windows version uses a simple hook around the Win32 GDI and requires no third party dependencies.
+
+`gdi.h` and `gdi.c` iimplements the native Windows code. It implements a `WinMain` function with the main Win32 events 
+processing loop. It binds the window's GDI context to a `Bitmap` object so that a render function can draw onto it and 
+fires off periodic `WM_PAINT` messages which calls the `render()` function to draw the screen.
+
 ## Implementation Notes
 
 The core of the emulator is in `chip8.c`. The idea is that the core of the implementation be platform 
@@ -36,25 +89,7 @@ The assembler and disassemblers are simple command line applications and platfor
 * Apparently there are CHIP-8 interpreters out there that don't use the standard 64x32 and 128x64 resolutions, but I don't support those.
 * As far as I can tell, there is not much in terms of standard timings on CHIP-8 implementations. My implementation follows the notes in [12] - The interpreter 
 	refreshes the screen at 60 frames per second, and 10 instructions are executed during each frame.
-
-## Win32/GDI implementation
-
-At the moment, only a Windows version that uses a simple hook around the Win32 GDI is available. A cross-platform version that uses SDL is on my *TODO* list.
-
-* `gdi.h` and `gdi.c` is a simple Win32/GDI game framework that wraps around Windows GDI without any third party dependencies. 
-* `bmp.h` and `bmp.c` (together with the `fonts/` directory) is used to draw and manipulate the bitmap graphics. See also https://github.com/wernsey/bitmap
-* `render.c` implements the `init_game()`, `deinit_game()` and `render()` functions that `gdi.c` requires - it forms the core of the implementation and 
-  demonstrates how the interpreter's API works.
-  
-`gdi.c` implements a `WinMain` function with the main Win32 events processing loop. It binds the window's GDI context to a `Bitmap` object so that
-a render function can draw onto it and fires off periodic `WM_PAINT` messages which calls the `render()` function to draw the screen.
-
-The `render()` function checks the keyboard and executes the interpreter a couple of times by calling `c8_step()` and
-redraws the screen if it changed.
-
-The implementation features a rudimentary debugger: Press F5 to pause a running game. The program counter and the current instruction will be displayed at the 
-bottom of the screen, along with the values of the 16 Vx registers. Press F6 to step through the program to the next instruction and F8 to resume the program.
-
+	
 ## References
 
 * [1] https://en.wikipedia.org/wiki/CHIP-8
@@ -69,10 +104,6 @@ bottom of the screen, along with the values of the 16 Vx registers. Press F6 to 
 * [10] Octo, John Earnest, https://github.com/JohnEarnest/Octo
 * [11] Octo SuperChip document, John Earnest, https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/SuperChip.md
 * [12] http://www.codeslinger.co.uk/pages/projects/chip8/primitive.html
-
-## TODO
-
-- [ ] FIXME: The `speed` could be handled better.
 
 ## License
 
