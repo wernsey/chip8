@@ -1,7 +1,13 @@
 *.o
 *.exe
+
 *.log
+screen-*.bmp
+
 *.bak
+*~
+
+.gdbinit
 
 # Generated documentation:
 chip8.html

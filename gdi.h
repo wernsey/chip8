@@ -48,4 +48,9 @@ extern Bitmap *screen;
 /* See the KEY_* defines above */
 extern char keys[];
 
-void exit_error(const char *msg, ...);
+extern void rlog(const char *fmt, ...); 
+
+extern void rerror(const char *fmt, ...);
+
+extern void exit_error(const char *msg, ...);
+

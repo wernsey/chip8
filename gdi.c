@@ -39,6 +39,26 @@ void clear_keys() {
     }
 }
 
+static FILE *logfile = NULL;
+
+void rlog(const char *fmt, ...) {
+	va_list arg;	
+	va_start(arg, fmt);
+	fputs("INFO: ", logfile);
+	vfprintf(logfile, fmt, arg);
+	fputc('\n', logfile);
+	va_end(arg);
+}
+
+void rerror(const char *fmt, ...) {
+	va_list arg;	
+	va_start(arg, fmt);
+	fputs("ERROR: ", logfile);
+	vfprintf(logfile, fmt, arg);
+	fputc('\n', logfile);
+	va_end(arg);
+}
+
 void exit_error(const char *msg, ...) {
     char message_text[256];
     if(msg) {
@@ -46,7 +66,9 @@ void exit_error(const char *msg, ...) {
         va_start (arg, msg);
         vsnprintf (message_text, (sizeof message_text) - 1, msg, arg);
         va_end (arg);
+		fputc('\n', logfile);
     }
+	fputs(message_text, logfile);
     MessageBox(
         NULL,
         message_text,
@@ -202,6 +224,10 @@ int APIENTRY WinMain(
     WNDCLASS wc;
     HWND hwnd;
     double elapsedSeconds = 0.0;
+	
+	logfile = fopen("gdifw.log", "w");
+
+    rlog("%s","GDI Framework: Application Running");
 
     ZeroMemory(&wc, sizeof wc);
     wc.hInstance     = hInstance;
@@ -239,6 +265,7 @@ int APIENTRY WinMain(
     /* Todo: I didn't bother with higher resolution timers:
     https://msdn.microsoft.com/en-us/library/dn553408(v=vs.85).aspx */
 
+    rlog("%s","GDI Framework: Entering main loop");
     quit = 0;
     for(;;) {
         clock_t startTime, endTime;
@@ -260,6 +287,9 @@ int APIENTRY WinMain(
             elapsedSeconds = 0.0;
         }
     }
+    rlog("%s","GDI Framework: Main loop stopped");
+	rlog("%s","Application Done!\n");
+	fclose(logfile);
 
     return msg.wParam;
 }

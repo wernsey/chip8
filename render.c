@@ -4,22 +4,24 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <windows.h>
+#ifdef SDL2
+#  include "pocadv.h"
+#else
+#  include <windows.h>
+#  include "gdi.h"
+#endif
 
 #include "chip8.h"
 #include "bmp.h"
-#include "gdi.h"
 
 static int speed = 20;
 static int fg_color = 0xAAAAFF;
 static int bg_color = 0x000055;
 static int running = 1;
 
-static FILE *logfile = NULL;
 static int gdi_puts(const char* s) {
-	if(!logfile)
-		return 0;
-	return fputs(s, logfile);
+	rlog("%s", s);
+	return 1;
 }
 
 static void draw_screen();
@@ -40,10 +42,9 @@ void init_game(int argc, char *argv[]) {
 
 	c8_puts = gdi_puts;
 
-	logfile = fopen("gdi.log", "w");
 	c8_verbose++;
 
-	c8_message("Initializing...\n");
+	c8_message("Initializing...");
 	
 	srand(time(NULL));
 	
@@ -63,15 +64,15 @@ void init_game(int argc, char *argv[]) {
 		}
 	}
 	if(optind >= argc) {
-		c8_message("No input file specified.\n");
+		c8_message("No input file specified.");
         exit_error("You need to specify a CHIP-8 file.");
     }
 	infile = argv[optind++];
 
-	c8_message("Loading %s...\n", infile);
+	c8_message("Loading %s...", infile);
 	if(!c8_load_file(infile)) {
-		c8_message("Unable to load '%s': %s\n", infile, strerror(errno));
-		exit_error("Unable to load '%s': %s\n", infile, strerror(errno));
+		c8_message("Unable to load '%s': %s", infile, strerror(errno));
+		exit_error("Unable to load '%s': %s", infile, strerror(errno));
 	}
 
 	bm_set_color(screen, 0x202020);
@@ -79,12 +80,11 @@ void init_game(int argc, char *argv[]) {
 
 	draw_screen();
 	
-	c8_message("Initialized.\n");
+	c8_message("Initialized.");
 }
 
 void deinit_game() {
-	c8_message("Done.\n");
-	fclose(logfile);
+	c8_message("Done.");
 }
 
 static void draw_screen() {
@@ -208,3 +208,9 @@ int render(double elapsedSeconds) {
 
 	return 1;
 }
+
+int pointer_down(int x, int y, int id){return 0;}
+int pointer_up(int x, int y, int id){return 0;}
+int pointer_move(int x, int y, int id){return 0;}
+int pointer_click(int x, int y, int id){return 0;}
+int key_press(int code){return 0;}
