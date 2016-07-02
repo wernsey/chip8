@@ -13,26 +13,39 @@ He also has a collection of CHIP-8 games and programs in his [GAMES.zip](http://
 
 ## Compilation and Usage
 
-The system was built and tested with the MinGW compiler under Windows. To compile it type `make` from the MSYS shell.
+* Linux: Type `make` from the shell.
+* Windows: The system was built and tested with the [MinGW](http://www.mingw.org/) tools. To compile it type `make` from the MSYS shell.
 
+To use the emulator:
 
+* Under Linux: Type `chip8 game.ch8` where game.ch8 is the binary CHIP-8 file.
+* Under Windows: Type `chip8 game.ch8` or `chip8-gdi game.ch8` depending on which of the implementations (see below) you want to use.
+
+The assembler and disassemblers are simple command line applications and platform independent.
 
 To use the assembler, type
 
-    $ c8asm file.asm
+    $ c8asm -o file.c8h file.asm
 
-This will assemble `file.asm` into a binary `a.c8h`.
+This will assemble `file.asm` into a binary `file.c8h`. If the `-o` is not specified it will default to `a.c8h`.
 
 To use the disassembler, run the command
 	
-    $ c8dasm a.ch8
+    $ c8dasm a.ch8 > outfile.asm
 	
 where `a.ch8` is the file you want to disassemble.
 
 ## Interpreter Implementations
 
-Two implementations are provided in this repository: A SDL-based implentation (<https://www.libsdl.org/>) which is intended for portability, and a native
-Windows implementation which is intended for small size and requires no third party dependencies.
+The core of the emulator is in `chip8.c`. The idea is that this core be platform 
+independent and then hooks are provided for platform specific implementations.
+
+The API is described in `chip8.h`. The `docs` target in the Makefile generates HTML documentation from it.
+
+Two implementations are provided in this repository: 
+
+1. A SDL-based implentation (<https://www.libsdl.org/>) which is intended for portability, and 
+2. a native Windows implementation which is intended for small size and requires no third party dependencies.
 
 In both versions
 
@@ -47,7 +60,7 @@ with both with only a couple of minor modifications.
 The implementations feature a rudimentary debugger: Press F5 to pause a running game. The program counter and the current instruction will be displayed at the 
 bottom of the screen, along with the values of the 16 Vx registers. Press F6 to step through the program to the next instruction and F8 to resume the program.
   
-The `Makefile` will build both versions.
+The `Makefile` will build the SDL version by default, and build the GDI version under Windows.
   
 ### SDL Implementation
 
@@ -66,14 +79,8 @@ fires off periodic `WM_PAINT` messages which calls the `render()` function to dr
 
 ## Implementation Notes
 
-The core of the emulator is in `chip8.c`. The idea is that the core of the implementation be platform 
-independent and then hooks are provided for platform specific implementations.
-
-The API is described in `chip8.h`. The `docs` target in the Makefile generates HTML documentation from it.
-
-The assembler and disassemblers are simple command line applications and platform independent.
-
-* Regarding `2nnn`, [2] says the stack pointer is incremented first (i.e. `stack[++SP]`), but that skips `stack[0]`. My implementation does it the other way round.
+* Regarding `2nnn`, [2] says the stack pointer is incremented first (i.e. `stack[++SP]`), but that skips `stack[0]`. 
+    My implementation does it the other way round.
 * The `Fx55` and `Fx65` instructions doesn't change `I` in my implementation:
   * Wikipedia [1] says that modern emulators leave `I` unchanged (in the footnote under the instruction table).
   * [5] says that the `Fx55` instruction changes the value stored in `I`

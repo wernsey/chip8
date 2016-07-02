@@ -3,25 +3,27 @@
 # Yes, it does actually compile with TCC:
 #CC=C:\Tools\tcc\tcc.exe
 
+CFLAGS=-c -Wall
+LDFLAGS=-lm
+
 # Detect operating system:
 # More info: http://stackoverflow.com/q/714100
 ifeq ($(OS),Windows_NT)
-  EXECUTABLES=chip8-gdi chip8-sdl
+  EXECUTABLES=chip8 chip8-gdi
+  LDFLAGS+=-mwindows
 else
   EXECUTABLES=chip8
 endif
 
-CFLAGS=-c -Wall
-LDFLAGS=-lm
 
 ifeq ($(BUILD),debug)
-# Debug
-CFLAGS += -O0 -g -I/local/include
-LDFLAGS +=
+  # Debug
+  CFLAGS += -O0 -g -I/local/include
+  LDFLAGS +=
 else
-# Release mode
-CFLAGS += -O2 -DNDEBUG -I/local/include
-LDFLAGS += -s
+  # Release mode
+  CFLAGS += -O2 -DNDEBUG -I/local/include
+  LDFLAGS += -s
 endif
 
 all: c8asm c8dasm $(EXECUTABLES) docs
@@ -35,16 +37,14 @@ c8asm: asmmain.o c8asm.o chip8.o
 c8dasm: dasmmain.o c8dasm.o chip8.o
 	$(CC) $(LDFLAGS) -o $@ $^
 
-# Windows GDI and SDL interpreter executables:
-chip8-gdi: gdi.o render-gdi.o chip8.o bmp.o
-	$(CC) $(LDFLAGS) -o $@ $^ -mwindows
-	
-chip8-sdl: pocadv.o render-sdl.o chip8.o bmp.o
-	$(CC) $^ $(LDFLAGS) `sdl2-config --libs` -o $@  -mwindows
 
-# Linux executable
+# Portable SDL executable
 chip8: pocadv.o render-sdl.o chip8.o bmp.o
 	$(CC) $^ $(LDFLAGS) `sdl2-config --libs` -o $@ 
+
+# Windows GDI interpreter executable:
+chip8-gdi: gdi.o render-gdi.o chip8.o bmp.o
+	$(CC) $(LDFLAGS) -o $@ $^ -mwindows
 
 .c.o:
 	$(CC) $(CFLAGS) $< -o $@
