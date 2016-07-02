@@ -37,15 +37,6 @@ c8asm: asmmain.o c8asm.o chip8.o
 c8dasm: dasmmain.o c8dasm.o chip8.o
 	$(CC) $(LDFLAGS) -o $@ $^
 
-
-# Portable SDL executable
-chip8: pocadv.o render-sdl.o chip8.o bmp.o
-	$(CC) $^ $(LDFLAGS) `sdl2-config --libs` -o $@ 
-
-# Windows GDI interpreter executable:
-chip8-gdi: gdi.o render-gdi.o chip8.o bmp.o
-	$(CC) $(LDFLAGS) -o $@ $^ -mwindows
-
 .c.o:
 	$(CC) $(CFLAGS) $< -o $@
 
@@ -56,28 +47,31 @@ bmp.o: bmp.c bmp.h
 asmmain.o: asmmain.c chip8.h
 dasmmain.o: dasmmain.c chip8.h
 
-# Windows specific:
-render-gdi.o: render.c chip8.h gdi.h bmp.h
-	$(CC) $(CFLAGS) -DGDI $< -o $@
-	
-# SDL
+# SDL specific:
+chip8: pocadv.o render-sdl.o chip8.o bmp.o
+	$(CC) $^ $(LDFLAGS) `sdl2-config --libs` -o $@ 
 render-sdl.o: render.c chip8.h pocadv.h bmp.h
 	$(CC) $(CFLAGS) -DSDL2 `sdl2-config --cflags` $< -o $@
-
-gdi.o: gdi.c gdi.h bmp.h
-
 pocadv.o: pocadv.c pocadv.h bmp.h
-	$(CC) $(CFLAGS) `sdl2-config --cflags` -I/local/include -DSDL2 $< -o $@
+	$(CC) $(CFLAGS) -DSDL2 `sdl2-config --cflags` $< -o $@
 
-docs: chip8.html
+# Windows GDI-version specific:
+chip8-gdi: gdi.o render-gdi.o chip8.o bmp.o
+	$(CC) $(LDFLAGS) -o $@ $^ -mwindows
+render-gdi.o: render.c chip8.h gdi.h bmp.h
+	$(CC) $(CFLAGS) -DGDI $< -o $@
+gdi.o: gdi.c gdi.h bmp.h
+	
+# Documentation
+docs: chip8-api.html
 
-chip8.html: chip8.h comdown.awk
+chip8-api.html: chip8.h comdown.awk
 	awk -f comdown.awk -v Theme=7 chip8.h > $@
 
 .PHONY : clean
 
 clean:
 	-rm -f *.o
-	-rm -f *.exe
-	-rm -f chip8.html
+	-rm -f c8asm chip8 c8dasm *.exe
+	-rm -f chip8-api.html
 	-rm -f *.log

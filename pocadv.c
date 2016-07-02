@@ -5,7 +5,7 @@ Compiling with GCC (MinGW):
 Compiling with Emscripten:
  $ emsdk activate latest ; from the emsdk-xxx directory
  $ emcc -O2 test.c -o hello.html
- $ python -m SimpleHTTPServer 8080
+ $ python -m SimpleHTTPServer 8080 &
 */
 
 #include <stdio.h>
@@ -40,14 +40,12 @@ static SDL_Texture *texture = NULL;
 static SDL_Window *window;
 #endif
 
-struct bitmap * screen;
+Bitmap *screen;
 
 #ifndef SDL2
 char keys[SDLK_LAST];
-#define KCODE(k) SDLK_ ## k
 #else
 char keys[SDL_NUM_SCANCODES];
-#define KCODE(k) SDL_SCANCODE_ ## k
 #endif
 
 /* Handle special keys */
@@ -123,6 +121,7 @@ static void handle_events() {
 #else
                 if(handleKeys(event.key.keysym.sym))
                     break;
+                //rlog("Key down: %3u 0x%02X", event.key.keysym.sym, event.key.keysym.sym);
                 keys[event.key.keysym.sym] = 1;
 				key_press(event.key.keysym.sym);
 #endif
@@ -180,21 +179,21 @@ static void handle_events() {
     }
 }
 
-struct bitmap *get_bmp(const char *filename) {
+Bitmap *get_bmp(const char *filename) {
 #ifdef ANDROID
     SDL_RWops *file = SDL_RWFromFile(filename, "rb");
-    struct bitmap *bmp = bm_load_rw(file);
+    Bitmap *bmp = bm_load_rw(file);
     SDL_RWclose(file);
 #else
-    struct bitmap *bmp = bm_load(filename);
+    Bitmap *bmp = bm_load(filename);
 #endif
     return bmp;
 }
 
 /* Shucks, all my bitmap code expects the pixels to be in
 BGRA, but the SDL surface wants it to be in RGBA.  */
-static struct bitmap *fix_bitmap_bgra(struct bitmap *b) {
-#if defined(__EMSCRIPTEN__) && 1
+static Bitmap *fix_bitmap_bgra(Bitmap *b) {
+#if defined(__EMSCRIPTEN__) && 0
     int i;
     if(!b) 
         return NULL;
@@ -207,8 +206,12 @@ static struct bitmap *fix_bitmap_bgra(struct bitmap *b) {
 }
 
 static void draw_screen() {    
-    Uint32 start = SDL_GetTicks();
+    static Uint32 start = 0;
 	static Uint32 elapsed = 0;
+	
+	elapsed = SDL_GetTicks() - start;
+	
+	if(elapsed < 1) return;
     
 #if defined(SDL2) && USE_OPENGL
 	SDL_GetWindowSize(window, &w, &h);
@@ -227,11 +230,8 @@ static void draw_screen() {
 	SDL_GL_SwapBuffers();
 #  endif
 #endif
-    
-	if(elapsed < 1)
-		SDL_Delay(1000/100);
-	
-    elapsed = SDL_GetTicks() - start;
+    	
+    start = SDL_GetTicks();
 	
 #if 0 /* If you need debug info on the screen : */    
     bm_set_color_s(screen, "white");
@@ -284,7 +284,8 @@ void exit_error(const char *fmt, ...) {
 #endif
         va_end (arg);
     }
-	fclose(logfile);
+	if(logfile != stdout && logfile != stderr)
+		fclose(logfile);
     exit(1);
 }
 
@@ -315,7 +316,7 @@ static void do_iteration() {
 	SDL_RenderClear(renderer);
 	SDL_RenderCopy(renderer, texture, NULL, NULL);
 	SDL_RenderPresent(renderer);
-#endif
+#  endif
 #endif
 }
 
@@ -344,7 +345,11 @@ int main(int argc, char *argv[]) {
 	const char *error;
 #endif
 
+#ifdef __EMSCRIPTEN__
+	logfile = stdout;
+#else
 	logfile = fopen("pocadv.log", "w");
+#endif
 
     rlog("%s","Pocket Adventure: Application Running");
     
@@ -395,28 +400,31 @@ int main(int argc, char *argv[]) {
 	}
 #  endif    
     screen = bm_create(SCREEN_WIDTH, SCREEN_HEIGHT);
+    init_game(argc, argv);
 #else
 /* Using SDL 1.2 */
 #  if USE_OPENGL
 	SDL_WM_SetCaption("Pocket Adventure (SDL1.2)", "game");
-	if(!(window = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 32, SDL_OPENGL)))
-	{
+	if(!(window = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 32, SDL_OPENGL))) {
 		rerror("Set Video Mode Failed: %s\n", SDL_GetError());
 		return 1;
 	}
 	setup_view(SCREEN_WIDTH, SCREEN_HEIGHT);
     screen = bm_create(SCREEN_WIDTH, SCREEN_HEIGHT);
+    init_game(argc, argv);
 #else
     SDL_WM_SetCaption("Pocket Adventure (SDL1.2)", "game");
     window = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 32, SDL_SWSURFACE);
     
-    screen = bm_bind(SCREEN_WIDTH, SCREEN_HEIGHT, NULL);
-	
+    if(SDL_MUSTLOCK(window))
+        SDL_LockSurface(window);
+    screen = bm_bind(SCREEN_WIDTH, SCREEN_HEIGHT, window->pixels);
+    init_game(argc, argv);
+    if(SDL_MUSTLOCK(window))
+        SDL_UnlockSurface(window);  
 #  endif
 #endif
-    
-    init_game(argc, argv);
-    
+
 #ifdef TEST_SDL_LOCK_OPTS
     EM_ASM("SDL.defaults.copyOnLock = false; SDL.defaults.discardOnLock = true; SDL.defaults.opaqueFrontBuffer = false");
 #endif
@@ -425,7 +433,7 @@ int main(int argc, char *argv[]) {
 	/* FIXME: Frame rate in emscripten???
 	https://kripken.github.io/emscripten-site/docs/api_reference/emscripten.h.html#c.emscripten_set_main_loop
 	*/	
-    emscripten_set_main_loop(do_iteration, 0, 1);
+    emscripten_set_main_loop(do_iteration, 30, 1);
 #else
     rlog("%s","Pocket Adventure: Entering main loop");
 
@@ -457,6 +465,7 @@ int main(int argc, char *argv[]) {
     SDL_Quit();
     
     rlog("%s","Application Done!\n");
-    fclose(logfile);
+    if(logfile != stdout && logfile != stderr)
+		fclose(logfile);
     return 0;
 }

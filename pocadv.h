@@ -44,7 +44,7 @@
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define MAX(a,b) ((a)>(b)?(a):(b))
 
-extern struct bitmap *screen;
+extern Bitmap *screen;
 
 #ifndef SDL2
 extern char keys[SDLK_LAST];
@@ -56,7 +56,7 @@ extern char keys[SDL_NUM_SCANCODES];
 
 extern int quit;
 
-extern struct bitmap *get_bmp(const char *filename);
+extern Bitmap *get_bmp(const char *filename);
 
 extern char *read_text_file(const char *fname);
 
