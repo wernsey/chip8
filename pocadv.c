@@ -233,8 +233,7 @@ static void draw_screen() {
 	
     elapsed = SDL_GetTicks() - start;
 	
-#if 1 /* If you need debug info on the screen : */
-    
+#if 0 /* If you need debug info on the screen : */    
     bm_set_color_s(screen, "white");
     bm_printf(screen, 10, 10, "%d / %.2f", elapsed, deltaTime);
     /* bm_printf(screen, 10, 20, "%s %d", lastEvent, finger_id); */

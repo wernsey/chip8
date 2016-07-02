@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <time.h>
 #include <unistd.h>
+#include <errno.h>
 
 #ifdef SDL2
 #  include "pocadv.h"

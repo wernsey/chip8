@@ -1,5 +1,10 @@
 *.o
+
+# Executables:
 *.exe
+c8asm
+chip8
+c8dasm
 
 *.log
 screen-*.bmp
