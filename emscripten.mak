@@ -39,8 +39,10 @@ render-sdl.o: render.c chip8.h pocadv.h bmp.h
 pocadv.o: pocadv.c pocadv.h bmp.h
 	$(CC) $(CFLAGS) $< -o $@
 
-.PHONY : clean
+.PHONY : clean wipe
 
-clean:
+wipe:
 	-rm -f *.o
+
+clean: wipe
 	-rm -f chip8.data chip8.js

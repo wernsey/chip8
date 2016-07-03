@@ -68,10 +68,12 @@ docs: chip8-api.html
 chip8-api.html: chip8.h comdown.awk
 	awk -f comdown.awk -v Theme=7 chip8.h > $@
 
-.PHONY : clean
+.PHONY : clean wipe
 
-clean:
+wipe:
 	-rm -f *.o
+
+clean: wipe
 	-rm -f c8asm chip8 c8dasm *.exe
 	-rm -f chip8-api.html
 	-rm -f *.log

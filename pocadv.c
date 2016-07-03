@@ -393,7 +393,7 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	
-    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_WIDTH, SCREEN_HEIGHT);
+    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_WIDTH, SCREEN_HEIGHT);
 	if(!texture) {
 		rerror("%s","SDL_CreateTexture()");
 		return 1;

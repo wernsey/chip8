@@ -1,3 +1,10 @@
+/*
+ * FIXME: This information is incorrect
+ * The internal format is 0xAABBGGRR little endian.
+ * Meaning that p[0] contains R, p[1] contains G,
+ * p[2] contains B and p[3] contains A
+ * and the data buffer is an array of bytes RGBARGBARGBARGBA...
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -111,21 +118,28 @@ struct rgb_triplet {
 #define BM_BLOB_SIZE(B) (B->w * B->h * BM_BPP)
 #define BM_ROW_SIZE(B)  (B->w * BM_BPP)
 
+/* FIXME: Make a plan so that all these shifts aren't necessary. 
+ * The basic issue is that you can call bm_set_color() with 0xFF0000 for
+ * "red", ignoring the alpha value - it's a legacy issue.
+ */
+//#define FIX_RGBA(c)   (((c & 0xFF000000) >> 24)  | ((c & 0x00FFFFFF) << 8))
+#define FIX_RGBA(c)   c
+
 #define BM_GET(b, x, y) (*((unsigned int*)(b->data + y * BM_ROW_SIZE(b) + x * BM_BPP)))
-#define BM_SET(b, x, y, c) *((unsigned int*)(b->data + y * BM_ROW_SIZE(b) + x * BM_BPP)) = c
+#define BM_SET(b, x, y, c) *((unsigned int*)(b->data + y * BM_ROW_SIZE(b) + x * BM_BPP)) = FIX_RGBA(c)
 
 #define BM_SET_RGBA(BMP, X, Y, R, G, B, A) do { \
         int _p = ((Y) * BM_ROW_SIZE(BMP) + (X)*BM_BPP); \
-        BMP->data[_p++] = B;\
-        BMP->data[_p++] = G;\
         BMP->data[_p++] = R;\
+        BMP->data[_p++] = G;\
+        BMP->data[_p++] = B;\
         BMP->data[_p++] = A;\
     } while(0)
 
-#define BM_GETB(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 0])
+#define BM_GETA(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 3]) /* A at last byte */
+#define BM_GETB(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 2])
 #define BM_GETG(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 1])
-#define BM_GETR(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 2])
-#define BM_GETA(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 3])
+#define BM_GETR(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 0]) /* R at first byte */
 
 /* N=0 -> B, N=1 -> G, N=2 -> R, N=3 -> A */
 #define BM_GETN(B,N,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + (N)])
@@ -2210,14 +2224,14 @@ unsigned int bm_get(Bitmap *b, int x, int y) {
     unsigned int *p;
     assert(x >= 0 && x < b->w && y >= 0 && y < b->h);
     p = (unsigned int*)(b->data + y * BM_ROW_SIZE(b) + x * BM_BPP);
-    return *p;
+    return FIX_RGBA(*p);
 }
 
 void bm_set(Bitmap *b, int x, int y, unsigned int c) {
     unsigned int *p;
     assert(x >= 0 && x < b->w && y >= 0 && y < b->h);
     p = (unsigned int*)(b->data + y * BM_ROW_SIZE(b) + x * BM_BPP);
-    *p = c;
+    *p = FIX_RGBA(c);
 }
 
 void bm_set_rgb(Bitmap *b, int x, int y, unsigned char R, unsigned char G, unsigned char B) {
@@ -3193,6 +3207,7 @@ void bm_set_color_s(Bitmap *bm, const char *text) {
 }
 
 void bm_set_color(Bitmap *bm, unsigned int col) {
+    /* FIXME: bm_color_atoi() is broken */
     bm->color = col;
 }
 
@@ -3594,7 +3609,7 @@ void bm_fillroundrect(Bitmap *b, int x0, int y0, int x1, int y1, int r) {
     }
 }
 
-/* Bexier curve with 3 control points.
+/* Bezier curve with 3 control points.
  * See http://devmag.org.za/2011/04/05/bzier-curves-a-tutorial/
  * I tried the more optimized version at
  * http://members.chello.at/~easyfilter/bresenham.html
@@ -3731,7 +3746,7 @@ static void fs_add_factor(Bitmap *b, int x, int y, int er, int eg, int eb, int f
 }
 
 void bm_reduce_palette(Bitmap *b, int palette[], size_t n) {
-    /* Floyd–Steinberg (error-diffusion) dithering
+    /* Floyd-Steinberg (error-diffusion) dithering
         http://en.wikipedia.org/wiki/Floyd%E2%80%93Steinberg_dithering */
     int x, y;
     if(!b)
