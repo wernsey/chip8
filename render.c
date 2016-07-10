@@ -16,9 +16,16 @@
 #include "chip8.h"
 #include "bmp.h"
 
+/* number of instructions to execute per second */
 static int speed = 1200;
+
+/* Foreground color */
 static int fg_color = 0xAAAAFF;
+
+/* Background color */
 static int bg_color = 0x000055;
+
+/* Is the interpreter running? Set to 0 to enter "debug" mode */
 static int running = 1;
 
 /* These are the same keybindings Octo [10]'s  */
@@ -40,7 +47,7 @@ static unsigned int Key_Mapping[16] = {
 	KCODEA(r,R),
 	KCODEA(f,F),
 	KCODEA(v,V)
-#else	
+#else
 	0x58, /* '0' -> 'x' */
 	0x31, /* '1' -> '1' */
 	0x32, /* '2' -> '2' */
@@ -60,7 +67,7 @@ static unsigned int Key_Mapping[16] = {
 #endif
 };
 
-static void draw_scene();
+static void draw_screen();
 
 static void usage() {
 	exit_error("Use these command line variables:\n"
@@ -77,11 +84,11 @@ void init_game(int argc, char *argv[]) {
 	const char *infile = NULL;
 
 	rlog("Initializing...");
-	
+
 	srand(time(NULL));
-	
+
 	c8_reset();
-	
+
 	fg_color = bm_byte_order(fg_color);
 	bg_color = bm_byte_order(bg_color);
 
@@ -98,7 +105,7 @@ void init_game(int argc, char *argv[]) {
 			}
 		}
 	}
-	
+
 	if(optind >= argc) {
         exit_error("You need to specify a CHIP-8 file.");
     }
@@ -112,7 +119,7 @@ void init_game(int argc, char *argv[]) {
 	bm_set_color(screen, 0x202020);
 	bm_clear(screen);
 
-	draw_scene();
+	draw_screen();
 
 #ifdef __EMSCRIPTEN__
 	/* I Couldn't figure out why this is necessary on the emscripten port: */
@@ -133,7 +140,7 @@ void init_game(int argc, char *argv[]) {
 	Key_Mapping[14] = KCODEA(f,F);
 	Key_Mapping[15] = KCODEA(v,V);
 #endif
-		
+
 	rlog("Initialized.");
 }
 
@@ -141,7 +148,7 @@ void deinit_game() {
 	rlog("Done.");
 }
 
-static void draw_scene() {
+static void draw_screen() {
 	int x, y, w, h, c, ox, oy;
 	int hi_res = c8_resolution(&w, &h);
 	if(!hi_res) {
@@ -171,42 +178,40 @@ int render(double elapsedSeconds) {
 
 	int key_pressed = 0;
 	for(i = 0; i < 16; i++) {
-		int k = Key_Mapping[i];		
+		int k = Key_Mapping[i];
 		if(keys[k]) {
 			key_pressed = 1;
 			c8_key_down(i);
-#ifndef NDEBUG			
+#ifndef NDEBUG
 			rlog("key pressed: %X 0x%02X", i, k);
 #endif
 		} else
 			c8_key_up(i);
 	}
-	
+
 	timer += elapsedSeconds;
-	while(timer > 1.0/60.0) {	
+	while(timer > 1.0/60.0) {
 		c8_60hz_tick();
 		timer -= 1.0/60.0;
 	}
 
 	if(running) {
 		/* F5 breaks the program and enters debugging mode */
-		if(keys[KCODE(F5)]) {
+		if(keys[KCODE(F5)])
 			running = 0;
-		}
-		
-		int count = speed * elapsedSeconds;			
-		for(i = 0; i < count; i++) {			
+
+		/* instructions per second * elapsed seconds = number of instructions to execute */
+		int count = speed * elapsedSeconds;
+		for(i = 0; i < count; i++) {
 			if(c8_ended())
 				return 0;
-			else if(c8_waitkey() && !key_pressed) {
+			else if(c8_waitkey() && !key_pressed)
 				return 1;
-			}
 
 			c8_step();
 
-			if(c8_screen_updated()) {
-				draw_scene();
-			}
+			if(c8_screen_updated())
+				draw_screen();
 		}
 	} else {
 		/* Debugging mode:
@@ -226,7 +231,7 @@ int render(double elapsedSeconds) {
 				return 1;
 			c8_step();
 			if(c8_screen_updated()) {
-				draw_scene();
+				draw_screen();
 			}
 			keys[KCODE(F6)] = 0;
 		}

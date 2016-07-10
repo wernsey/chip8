@@ -80,11 +80,14 @@ The `chip8.html` is a wrapper around the Emscripten-generated JavaScript. If you
 
 The native Windows version uses a simple hook around the Win32 GDI and requires no third party dependencies.
 
-`gdi.h` and `gdi.c` iimplements the native Windows code. It implements a `WinMain` function with the main Win32 events 
+`gdi.h` and `gdi.c` implements the native Windows code. It implements a `WinMain` function with the main Win32 events 
 processing loop. It binds the window's GDI context to a `Bitmap` object so that a render function can draw onto it and 
 fires off periodic `WM_PAINT` messages which calls the `render()` function to draw the screen.
 
 ## Implementation Notes
+
+I've consulted several sources for my implementation (see references below), and there were some discrepancies. This is how I handled
+them:
 
 * Regarding `2nnn`, [2] says the stack pointer is incremented first (i.e. `stack[++SP]`), but that skips `stack[0]`. 
     My implementation does it the other way round.
@@ -101,8 +104,9 @@ fires off periodic `WM_PAINT` messages which calls the `render()` function to dr
 * According to [7], the upper 256 bytes of RAM is used for the display, but it seems that modern interpreters don't do that. Besides, you'd need 1024 bytes to store the SCHIP's hi-res mode.
 * `hp48_flags` is not cleared between runs (See [11]); I don't make any effort to persist them, though.
 * Apparently there are CHIP-8 interpreters out there that don't use the standard 64x32 and 128x64 resolutions, but I don't support those.
-* As far as I can tell, there is not much in terms of standard timings on CHIP-8 implementations. My implementation follows the notes in [12] - The interpreter 
-	refreshes the screen at 60 frames per second, and 10 instructions are executed during each frame.
+* As far as I can tell, there is not much in terms of standard timings on CHIP-8 implementations. My implementation allows you to specify the speed 
+  as the number of instructions to execute per second (through the global variable `speed` in `render.c`). The value of 1200 instructions per second
+  seems like a good value to start with.
 	
 ## References
 

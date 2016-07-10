@@ -32,6 +32,9 @@ you may not want to import a bunch of third party libraries.
 #   include <setjmp.h>
 #endif
 
+/* Ignore the alpha byte when comparing colors?
+FIXME: Not all functions that should respect IGNORE_ALPHA does so.
+*/
 #ifndef IGNORE_ALPHA
 #  define IGNORE_ALPHA 1
 #endif
