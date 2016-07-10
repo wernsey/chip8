@@ -86,8 +86,8 @@ void init_game(int argc, char *argv[]) {
 	while((opt = getopt(argc, argv, "f:b:s:dv?")) != -1) {
 		switch(opt) {
 			case 'v': c8_verbose++; break;
-			case 'f': fg_color = bm_color_atoi(optarg); break;
-			case 'b': bg_color = bm_color_atoi(optarg); break;
+			case 'f': fg_color = bm_atoi(optarg); break;
+			case 'b': bg_color = bm_atoi(optarg); break;
 			case 's': speed = atoi(optarg); if(speed < 1) speed = 10; break;
 			case 'd': running = 0; break;
 			case '?' : {

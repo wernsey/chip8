@@ -32,6 +32,10 @@ you may not want to import a bunch of third party libraries.
 #   include <setjmp.h>
 #endif
 
+#ifndef IGNORE_ALPHA
+#  define IGNORE_ALPHA 1
+#endif
+
 #include "bmp.h"
 
 /*
@@ -41,7 +45,7 @@ TODO:
     I may also decide to change the API around it (especially wrt.
     blitting) in the future.
 
-    Also, functions like bm_color_atoi() and bm_set_color() does
+    Also, functions like bm_atoi() and bm_set_color() does
     not take the alpha value into account. The integers they return and
     accept is still 0xRRGGBB instead of 0xRRGGBBAA - It probably implies
     that I should change the type to unsigned int where it currently is
@@ -112,7 +116,7 @@ struct rgb_triplet {
 #define BM_ROW_SIZE(B)  (B->w * BM_BPP)
 
 #define BM_GET(b, x, y) (*((unsigned int*)(b->data + y * BM_ROW_SIZE(b) + x * BM_BPP)))
-#define BM_SET(b, x, y, c) *((unsigned int*)(b->data + y * BM_ROW_SIZE(b) + x * BM_BPP)) = c
+#define BM_SET(b, x, y, c) *((unsigned int*)(b->data + y * BM_ROW_SIZE(b) + x * BM_BPP)) = (c)	
 
 #define BM_SET_RGBA(BMP, X, Y, R, G, B, A) do { \
         int _p = ((Y) * BM_ROW_SIZE(BMP) + (X)*BM_BPP); \
@@ -129,6 +133,8 @@ struct rgb_triplet {
 
 /* N=0 -> B, N=1 -> G, N=2 -> R, N=3 -> A */
 #define BM_GETN(B,N,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + (N)])
+
+#define SET_COLOR_RGB(bm, r, g, b) bm->color = 0xFF000000 | ((r) << 16) | ((g) << 8) | (b)
 
 Bitmap *bm_create(int w, int h) {
     Bitmap *b = malloc(sizeof *b);
@@ -1062,10 +1068,13 @@ static Bitmap *bm_load_jpg_rw(SDL_RWops *rw) {
 
 /* These functions are used for the palettes in my GIF and PCX support: */
 
-static int cnt_comp_mask(const void*ap, const void*bp);
+static int cnt_comp_noalpha(const void*ap, const void*bp) {
+    int a = *(int*)ap, b = *(int*)bp;
+    return (a & 0x00FFFFFF) - (b & 0x00FFFFFF);
+}
 
-/* Variation on bm_count_colors() that builds an 8-bit palette while it is counting.
- * It returns -1 in case there are more than 256 colours in the palette, meaning the
+/* Counts the colors in the image and builds an 8-bit palette while it is counting.
+ * It returns -1 in case there are more than 256 colors in the palette, meaning the
  * image will have to be quantized first.
  * It also ignores the alpha values of the pixels.
  * It also has the side effect that the returned palette contains sorted colors, which
@@ -1076,7 +1085,7 @@ static int count_colors_build_palette(Bitmap *b, struct rgb_triplet rgb[256]) {
     int npx = b->w * b->h;
     int *sort = malloc(npx * sizeof *sort);
     memcpy(sort, b->data, npx * sizeof *sort);
-    qsort(sort, npx, sizeof(int), cnt_comp_mask);
+    qsort(sort, npx, sizeof(int), cnt_comp_noalpha);
     c = sort[0] & 0x00FFFFFF;
     rgb[0].r = (c >> 16) & 0xFF;
     rgb[0].g = (c >> 8) & 0xFF;
@@ -1097,7 +1106,7 @@ static int count_colors_build_palette(Bitmap *b, struct rgb_triplet rgb[256]) {
     return count;
 }
 
-/* Uses a binary search to find the index of a colour in a palette.
+/* Uses a binary search to find the index of a color in a palette.
 It (almost) goes without saying that the palette must be sorted. */
 static int bsrch_palette_lookup(struct rgb_triplet rgb[], int c, int imin, int imax) {
     c &= 0x00FFFFFF; /* Ignore the alpha value */
@@ -1256,9 +1265,9 @@ static Bitmap *bm_load_gif_rd(BmReader rd) {
 
         /* Set the Bitmap's color to the background color.*/
         bg = &palette[gif.lsd.background];
-        bm_set_color_rgb(gif.bmp, bg->r, bg->g, bg->b);
+        SET_COLOR_RGB(gif.bmp, bg->r, bg->g, bg->b);
         bm_clear(gif.bmp);
-        bm_set_color_rgb(gif.bmp, 0, 0, 0);
+        SET_COLOR_RGB(gif.bmp, 0, 0, 0);
         bm_set_alpha(gif.bmp, 0);
 
     } else {
@@ -1445,7 +1454,7 @@ static int gif_read_tbid(BmReader rd, GIF *gif, GIF_ID *gif_id, GIF_GCE *gce, st
                     situations where different image blocks in the
                     GIF has different transparent colors */
                 struct rgb_triplet *bg = &ct[gce->trans_index];
-                bm_set_color_rgb(gif->bmp, bg->r, bg->g, bg->b);
+                SET_COLOR_RGB(gif->bmp, bg->r, bg->g, bg->b);
             }
         }
 
@@ -1497,9 +1506,9 @@ static int gif_read_tbid(BmReader rd, GIF *gif, GIF_ID *gif_id, GIF_GCE *gce, st
                                 struct rgb_triplet *rgb = &ct[c];
                                 assert(x + gif_id->left >= 0 && x + gif_id->left < gif->bmp->w);
                                 if(trans_flag && c == gce->trans_index) {
-                                    bm_set_rgb_a(gif->bmp, x + gif_id->left, truey, rgb->r, rgb->g, rgb->b, 0x00);
+                                    bm_set(gif->bmp, x + gif_id->left, truey, bm_rgba(rgb->r, rgb->g, rgb->b, 0x00));
                                 } else {
-                                    bm_set_rgb(gif->bmp, x + gif_id->left, truey, rgb->r, rgb->g, rgb->b);
+                                    bm_set(gif->bmp, x + gif_id->left, truey, bm_rgb(rgb->r, rgb->g, rgb->b));
                                 }
                             } else {
                                 /* Decode error */
@@ -2220,32 +2229,6 @@ void bm_set(Bitmap *b, int x, int y, unsigned int c) {
     *p = c;
 }
 
-void bm_set_rgb(Bitmap *b, int x, int y, unsigned char R, unsigned char G, unsigned char B) {
-    assert(x >= 0 && x < b->w && y >= 0 && y < b->h);
-    BM_SET_RGBA(b, x, y, R, G, B, (b->color >> 24));
-}
-
-void bm_set_rgb_a(Bitmap *b, int x, int y, unsigned char R, unsigned char G, unsigned char B, unsigned char A) {
-    assert(x >= 0 && x < b->w && y >= 0 && y < b->h);
-    BM_SET_RGBA(b, x, y, R, G, B, A);
-}
-
-unsigned char bm_getr(Bitmap *b, int x, int y) {
-    return BM_GETR(b,x,y);
-}
-
-unsigned char bm_getg(Bitmap *b, int x, int y) {
-    return BM_GETG(b,x,y);
-}
-
-unsigned char bm_getb(Bitmap *b, int x, int y) {
-    return BM_GETB(b,x,y);
-}
-
-unsigned char bm_geta(Bitmap *b, int x, int y) {
-    return BM_GETA(b,x,y);
-}
-
 Bitmap *bm_fromXbm(int w, int h, unsigned char *data) {
     int x,y;
 
@@ -2721,14 +2704,16 @@ void bm_apply_kernel(Bitmap *b, int dim, float kernel[]) {
     bm_free(tmp);
 }
 
-void bm_swap_colour(Bitmap *b, unsigned char sR, unsigned char sG, unsigned char sB, unsigned char dR, unsigned char dG, unsigned char dB) {
+void bm_swap_color(Bitmap *b, unsigned int src, unsigned int dest) {
     /* Why does this function exist again? */
     int x,y;
+#if IGNORE_ALPHA
+	src |= 0xFF000000; dest |= 0xFF000000;
+#endif
     for(y = 0; y < b->h; y++)
         for(x = 0; x < b->w; x++) {
-            if(BM_GETR(b,x,y) == sR && BM_GETG(b,x,y) == sG && BM_GETB(b,x,y) == sB) {
-                int a = BM_GETA(b, x, y);
-                BM_SET_RGBA(b, x, y, dR, dG, dB, a);
+            if(BM_GET(b,x,y) == src) {
+                BM_SET(b, x, y, dest);
             }
         }
 }
@@ -2844,74 +2829,13 @@ Bitmap *bm_resample_bcub(const Bitmap *in, int nw, int nh) {
     return out;
 }
 
-/* Sort functions for bm_count_colors() */
-static int cnt_comp(const void *ap, const void *bp) {
-    int a = *(int*)ap, b = *(int*)bp;
-    return a - b;
-}
-static int cnt_comp_mask(const void*ap, const void*bp) {
-    int a = *(int*)ap, b = *(int*)bp;
-    return (a & 0x00FFFFFF) - (b & 0x00FFFFFF);
-}
-
-int bm_count_colors(Bitmap *b, int use_mask) {
-    /* Counts the number of colours in an image by
-    treating the pixels in the image as an array
-    of integers, sorting them and then counting the
-    number of times the value of the array changes.
-    Based on this suggestion:
-    http://stackoverflow.com/a/128055/115589
-    (according to the comments, certain qsort()
-    implementations may have problems with large
-    images if they are recursive)
-    */
-    int count = 1, i;
-    int npx = b->w * b->h;
-    int *sort = malloc(npx * sizeof *sort);
-    memcpy(sort, b->data, npx * sizeof *sort);
-    if(use_mask) {
-        qsort(sort, npx, sizeof(int), cnt_comp_mask);
-    } else {
-        qsort(sort, npx, sizeof(int), cnt_comp);
-    }
-    if(use_mask) {
-        for(i = 1; i < npx; i++){
-            if((sort[i] & 0x00FFFFFF) != (sort[i-1]& 0x00FFFFFF))
-                count++;
-        }
-    } else {
-        for(i = 1; i < npx; i++){
-            if(sort[i] != sort[i-1])
-                count++;
-        }
-    }
-    free(sort);
-    return count;
-}
-
-void bm_set_color_rgb(Bitmap *bm, unsigned char r, unsigned char g, unsigned char b) {
-    bm->color = 0xFF000000 | (r << 16) | (g << 8) | b;
-}
-
 void bm_set_alpha(Bitmap *bm, int a) {
     if(a < 0) a = 0;
     if(a > 255) a = 255;
     bm->color = (bm->color & 0x00FFFFFF) | (a << 24);
 }
 
-void bm_adjust_rgba(Bitmap *bm, float rf, float gf, float bf, float af) {
-    int x, y;
-    for(y = 0; y < bm->h; y++)
-        for(x = 0; x < bm->w; x++) {
-            float R = BM_GETR(bm,x,y);
-            float G = BM_GETG(bm,x,y);
-            float B = BM_GETB(bm,x,y);
-            float A = BM_GETA(bm,x,y);
-            BM_SET_RGBA(bm, x, y, rf * R, gf * G, bf * B, af * A);
-        }
-}
-
-/* Lookup table for bm_color_atoi()
+/* Lookup table for bm_atoi()
  * This list is based on the HTML and X11 colors on the
  * Wikipedia's list of web colors:
  * http://en.wikipedia.org/wiki/Web_colors
@@ -2921,7 +2845,7 @@ void bm_adjust_rgba(Bitmap *bm, float rf, float gf, float bf, float af) {
  *
  * Keep the list sorted because a binary search is used.
  *
- * bm_color_atoi()'s text parameter is not case sensitive and spaces are
+ * bm_atoi()'s text parameter is not case sensitive and spaces are
  * ignored, so for example "darkred" and "Dark Red" are equivalent.
  */
 static const struct color_map_entry {
@@ -3089,7 +3013,7 @@ static const struct color_map_entry {
     {NULL, 0}
 };
 
-unsigned int bm_color_atoi(const char *text) {
+unsigned int bm_atoi(const char *text) {
     unsigned int col = 0;
 
     if(!text) return 0;
@@ -3148,7 +3072,7 @@ unsigned int bm_color_atoi(const char *text) {
                 min = i + 1;
             }
         }
-        /* Drop through: You may be dealing with a colour like 'a6664c' */
+        /* Drop through: You may be dealing with a color like 'a6664c' */
     } else if(text[0] == '#') {
         text++;
         if(strlen(text) == 3) {
@@ -3187,19 +3111,15 @@ unsigned int bm_color_atoi(const char *text) {
     return col;
 }
 
-void bm_set_color_s(Bitmap *bm, const char *text) {
-    /* FIXME: Better name for this function */
-    bm_set_color(bm, bm_color_atoi(text));
+unsigned int bm_rgb(unsigned char R, unsigned char G, unsigned char B) {
+	return 0xFF000000 | ((R) << 16) | ((G) << 8) | (B);
+}
+unsigned int bm_rgba(unsigned char R, unsigned char G, unsigned char B, unsigned char A) {
+	return ((A) << 24) | ((R) << 16) | ((G) << 8) | (B);	
 }
 
 void bm_set_color(Bitmap *bm, unsigned int col) {
     bm->color = col;
-}
-
-void bm_get_color_rgb(Bitmap *bm, int *r, int *g, int *b) {
-    *r = (bm->color >> 16) & 0xFF;
-    *g = (bm->color >> 8) & 0xFF;
-    *b = bm->color & 0xFF;
 }
 
 unsigned int bm_get_color(Bitmap *bm) {
@@ -3213,25 +3133,9 @@ unsigned int bm_picker(Bitmap *bm, int x, int y) {
     return bm->color;
 }
 
-int bm_color_is(Bitmap *bm, int x, int y, int r, int g, int b) {
-    return BM_GETR(bm,x,y) == r && BM_GETG(bm,x,y) == g && BM_GETB(bm,x,y) == b;
-}
-
-double bm_cdist(int color1, int color2) {
-    int r1, g1, b1;
-    int r2, g2, b2;
-    int dr, dg, db;
-    r1 = (color1 >> 16) & 0xFF; g1 = (color1 >> 8) & 0xFF; b1 = (color1 >> 0) & 0xFF;
-    r2 = (color2 >> 16) & 0xFF; g2 = (color2 >> 8) & 0xFF; b2 = (color2 >> 0) & 0xFF;
-    dr = r1 - r2;
-    dg = g1 - g2;
-    db = b1 - b2;
-    return sqrt(dr * dr + dg * dg + db * db);
-}
-
 /* Squared distance between colors; so you don't need to get the root if you're
     only interested in comparing distances. */
-static int bm_cdist_sq(int color1, int color2) {
+static int col_dist_sq(int color1, int color2) {
     int r1, g1, b1;
     int r2, g2, b2;
     int dr, dg, db;
@@ -3259,26 +3163,6 @@ int bm_lerp(int color1, int color2, double t) {
     b3 = (b2 - b1) * t + b1;
 
     return (r3 << 16) | (g3 << 8) | (b3 << 0);
-}
-
-int bm_brightness(int color, double adj) {
-    int r, g, b;
-    if(adj < 0.0) return 0;
-
-    r = (color >> 16) & 0xFF;
-    g = (color >> 8) & 0xFF;
-    b = (color >> 0) & 0xFF;
-
-    r = (int)((double)r * adj);
-    if(r > 0xFF) r = 0xFF;
-
-    g = (int)((double)g * adj);
-    if(g > 0xFF) g = 0xFF;
-
-    b = (int)((double)b * adj);
-    if(b > 0xFF) b = 0xFF;
-
-    return (r << 16) | (g << 8) | (b << 0);
 }
 
 int bm_width(Bitmap *b) {
@@ -3623,7 +3507,7 @@ void bm_fill(Bitmap *b, int x, int y) {
         n;
     int qs = 0, /* queue size */
         mqs = 128; /* Max queue size */
-    unsigned int sc, dc; /* Source and Destination colours */
+    unsigned int sc, dc; /* Source and Destination colors */
 
     dc = b->color;
     bm_picker(b, x, y);
@@ -3699,9 +3583,9 @@ void bm_fill(Bitmap *b, int x, int y) {
 }
 
 static int closest_color(int c, int palette[], size_t n) {
-    int i, m = 0, md = bm_cdist_sq(c, palette[m]);
+    int i, m = 0, md = col_dist_sq(c, palette[m]);
     for(i = 1; i < n; i++) {
-        int d = bm_cdist_sq(c, palette[i]);
+        int d = col_dist_sq(c, palette[i]);
         if(d < md) {
             md = d;
             m = i;
@@ -3796,7 +3680,7 @@ static void reduce_palette_bayer(Bitmap *b, int palette[], size_t n, int bayer[]
 
             R = (oldpixel >> 16) & 0xFF; G = (oldpixel >> 8) & 0xFF; B = (oldpixel >> 0) & 0xFF;
 
-            /* The "- sub" below is because otherwise colours are only adjusted upwards,
+            /* The "- sub" below is because otherwise colors are only adjusted upwards,
                 causing the resulting image to be brighter than the original.
                 This seems to be the same problem this guy http://stackoverflow.com/q/4441388/115589
                 ran into, but I can't find anyone else on the web solving it like I did. */
