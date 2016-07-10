@@ -190,22 +190,7 @@ Bitmap *get_bmp(const char *filename) {
     return bmp;
 }
 
-/* Shucks, all my bitmap code expects the pixels to be in
-BGRA, but the SDL surface wants it to be in RGBA.  */
-static Bitmap *fix_bitmap_bgra(Bitmap *b) {
-#if defined(__EMSCRIPTEN__) && 0
-    int i;
-    if(!b) 
-        return NULL;
-    for(i = 0; i < b->w * b->h * 4; i += 4) {
-		int *p = (int*)(b->data + i);
-		*p = (*p & 0xFF00FF00) | ((*p & 0x00FF0000) >> 16) | ((*p & 0x000000FF) << 16);
-    }
-#endif
-    return b;
-}
-
-static void draw_screen() {    
+static void draw_frame() {    
     static Uint32 start = 0;
 	static Uint32 elapsed = 0;
 	
@@ -220,17 +205,8 @@ static void draw_screen() {
 	double deltaTime = elapsed / 1000.0;		
     if(!render(deltaTime)) {
 		quit = 1;
-	}	
-	fix_bitmap_bgra(screen);
-    
-#if USE_OPENGL
-#  if defined(SDL2)
-	SDL_GL_SwapWindow(window);
-#  else
-	SDL_GL_SwapBuffers();
-#  endif
-#endif
-    	
+	}
+	
     start = SDL_GetTicks();
 	
 #if 0 /* If you need debug info on the screen : */    
@@ -299,9 +275,11 @@ static void do_iteration() {
    
     handle_events();
 
-    draw_screen();
+    draw_frame();
 
-#  if !USE_OPENGL
+#  if USE_OPENGL
+	SDL_GL_SwapWindow(window);
+#  else
     if(SDL_MUSTLOCK(window))
         SDL_UnlockSurface(window);
     SDL_Flip(window);
@@ -309,9 +287,11 @@ static void do_iteration() {
 #else
     handle_events();
     
-    draw_screen();
+    draw_frame();
     
-#  if !USE_OPENGL
+#  if USE_OPENGL
+    SDL_GL_SwapWindow(window);
+#  else
     SDL_UpdateTexture(texture, NULL, screen->data, screen->w*4);
 	SDL_RenderClear(renderer);
 	SDL_RenderCopy(renderer, texture, NULL, NULL);
@@ -416,12 +396,15 @@ int main(int argc, char *argv[]) {
     SDL_WM_SetCaption("Pocket Adventure (SDL1.2)", "game");
     window = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 32, SDL_SWSURFACE);
     
-    if(SDL_MUSTLOCK(window))
+    if(SDL_MUSTLOCK(window)) {
         SDL_LockSurface(window);
-    screen = bm_bind(SCREEN_WIDTH, SCREEN_HEIGHT, window->pixels);
-    init_game(argc, argv);
-    if(SDL_MUSTLOCK(window))
-        SDL_UnlockSurface(window);  
+		screen = bm_bind(SCREEN_WIDTH, SCREEN_HEIGHT, window->pixels);
+		init_game(argc, argv);
+		SDL_UnlockSurface(window);  
+	} else {
+		screen = bm_bind(SCREEN_WIDTH, SCREEN_HEIGHT, window->pixels);
+		init_game(argc, argv);  
+	}
 #  endif
 #endif
 
@@ -430,10 +413,7 @@ int main(int argc, char *argv[]) {
 #endif
 
 #ifdef __EMSCRIPTEN__
-	/* FIXME: Frame rate in emscripten???
-	https://kripken.github.io/emscripten-site/docs/api_reference/emscripten.h.html#c.emscripten_set_main_loop
-	*/	
-    emscripten_set_main_loop(do_iteration, 30, 1);
+    emscripten_set_main_loop(do_iteration, 0, 1);
 #else
     rlog("%s","Pocket Adventure: Entering main loop");
 

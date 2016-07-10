@@ -57,21 +57,23 @@ pocadv.o: pocadv.c pocadv.h bmp.h
 
 # Windows GDI-version specific:
 chip8-gdi: gdi.o render-gdi.o chip8.o bmp.o
-	$(CC) $(LDFLAGS) -o $@ $^ -mwindows
+	$(CC) $^ -o $@ $(LDFLAGS)
 render-gdi.o: render.c chip8.h gdi.h bmp.h
 	$(CC) $(CFLAGS) -DGDI $< -o $@
 gdi.o: gdi.c gdi.h bmp.h
-	
+
 # Documentation
 docs: chip8-api.html
 
 chip8-api.html: chip8.h comdown.awk
 	awk -f comdown.awk -v Theme=7 chip8.h > $@
 
-.PHONY : clean
+.PHONY : clean wipe
 
-clean:
+wipe:
 	-rm -f *.o
+
+clean: wipe
 	-rm -f c8asm chip8 c8dasm *.exe
 	-rm -f chip8-api.html
 	-rm -f *.log

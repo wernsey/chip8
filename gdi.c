@@ -132,7 +132,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			screen = bm_create(SCREEN_WIDTH, SCREEN_HEIGHT);
             epx = bm_bind(VSCREEN_WIDTH, VSCREEN_HEIGHT, pixels);
 #endif
-            bm_set_color_s(screen, "black");
+            bm_set_color(screen, bm_atoi("black"));
             bm_clear(screen);
 
             clear_keys();

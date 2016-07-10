@@ -24,22 +24,22 @@ static int running = 1;
 /* These are the same keybindings Octo [10]'s  */
 static unsigned int Key_Mapping[16] = {
 #if defined(SDL) || defined(SDL2)
-	KCODE(x),
+	KCODEA(x,X),
 	KCODE(1),
 	KCODE(2),
 	KCODE(3),
-	KCODE(q),
-	KCODE(w),
-	KCODE(e),
-	KCODE(A),
-	KCODE(S),
-	KCODE(D),
-	KCODE(Z),
-	KCODE(C),
+	KCODEA(q,Q),
+	KCODEA(w,W),
+	KCODEA(e,E),
+	KCODEA(a,A),
+	KCODEA(s,S),
+	KCODEA(d,D),
+	KCODEA(z,Z),
+	KCODEA(c,C),
 	KCODE(4),
-	KCODE(R),
-	KCODE(F),
-	KCODE(V)
+	KCODEA(r,R),
+	KCODEA(f,F),
+	KCODEA(v,V)
 #else	
 	0x58, /* '0' -> 'x' */
 	0x31, /* '1' -> '1' */
@@ -86,8 +86,8 @@ void init_game(int argc, char *argv[]) {
 	while((opt = getopt(argc, argv, "f:b:s:dv?")) != -1) {
 		switch(opt) {
 			case 'v': c8_verbose++; break;
-			case 'f': fg_color = bm_color_atoi(optarg); break;
-			case 'b': bg_color = bm_color_atoi(optarg); break;
+			case 'f': fg_color = bm_atoi(optarg); break;
+			case 'b': bg_color = bm_atoi(optarg); break;
 			case 's': speed = atoi(optarg); if(speed < 1) speed = 10; break;
 			case 'd': running = 0; break;
 			case '?' : {
@@ -95,6 +95,7 @@ void init_game(int argc, char *argv[]) {
 			}
 		}
 	}
+	
 	if(optind >= argc) {
         exit_error("You need to specify a CHIP-8 file.");
     }
@@ -109,24 +110,26 @@ void init_game(int argc, char *argv[]) {
 	bm_clear(screen);
 
 	draw_scene();
-	
+
+#ifdef __EMSCRIPTEN__
 	/* I Couldn't figure out why this is necessary on the emscripten port: */
-	Key_Mapping[0] = KCODE(x);
+	Key_Mapping[0] = KCODEA(x,X);
 	Key_Mapping[1] = KCODE(1);
 	Key_Mapping[2] = KCODE(2);
 	Key_Mapping[3] = KCODE(3);
-	Key_Mapping[4] = KCODE(q);
-	Key_Mapping[5] = KCODE(w);
-	Key_Mapping[6] = KCODE(e);
-	Key_Mapping[7] = KCODE(a);
-	Key_Mapping[8] = KCODE(s);
-	Key_Mapping[9] = KCODE(d);
-	Key_Mapping[10] = KCODE(z);
-	Key_Mapping[11] = KCODE(c);
+	Key_Mapping[4] = KCODEA(q,Q);
+	Key_Mapping[5] = KCODEA(w,W);
+	Key_Mapping[6] = KCODEA(e,E);
+	Key_Mapping[7] = KCODEA(a,A);
+	Key_Mapping[8] = KCODEA(s,S);
+	Key_Mapping[9] = KCODEA(d,D);
+	Key_Mapping[10] = KCODEA(z,Z);
+	Key_Mapping[11] = KCODEA(c,C);
 	Key_Mapping[12] = KCODE(4);
-	Key_Mapping[13] = KCODE(r);
-	Key_Mapping[14] = KCODE(f);
-	Key_Mapping[15] = KCODE(v);
+	Key_Mapping[13] = KCODEA(r,R);
+	Key_Mapping[14] = KCODEA(f,F);
+	Key_Mapping[15] = KCODEA(v,V);
+#endif
 		
 	rlog("Initialized.");
 }
