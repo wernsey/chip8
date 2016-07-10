@@ -49,7 +49,7 @@ dasmmain.o: dasmmain.c chip8.h
 
 # SDL specific:
 chip8: pocadv.o render-sdl.o chip8.o bmp.o
-	$(CC) $^ $(LDFLAGS) `sdl2-config --libs` -o $@ 
+	$(CC) $^ $(LDFLAGS) `sdl2-config --libs` -o $@
 render-sdl.o: render.c chip8.h pocadv.h bmp.h
 	$(CC) $(CFLAGS) -DSDL2 `sdl2-config --cflags` $< -o $@
 pocadv.o: pocadv.c pocadv.h bmp.h

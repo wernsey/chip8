@@ -2,7 +2,7 @@
 # Makefile for emscripten
 CC=emcc
 
-CFLAGS=-c -Werror -Wall
+CFLAGS=-c -Werror -Wall -DABGR=1
 LDFLAGS=-lm
 
 ifeq ($(BUILD),debug)

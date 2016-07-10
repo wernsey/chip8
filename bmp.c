@@ -36,21 +36,15 @@ you may not want to import a bunch of third party libraries.
 #  define IGNORE_ALPHA 1
 #endif
 
+/* Experimental ABGR color mode.
+ * Normally colors are stored as 0xARGB, but Emscripten uses an
+ * 0xABGR format on the canvas, so use -DABGR=1 in your compiler
+ * flags if you need to use this mode. */
+#ifndef ABGR
+#  define ABGR 0
+#endif
+
 #include "bmp.h"
-
-/*
-TODO:
-    The alpha support is a recent addition, so it is still a bit
-    sporadic and not well tested.
-    I may also decide to change the API around it (especially wrt.
-    blitting) in the future.
-
-    Also, functions like bm_atoi() and bm_set_color() does
-    not take the alpha value into account. The integers they return and
-    accept is still 0xRRGGBB instead of 0xRRGGBBAA - It probably implies
-    that I should change the type to unsigned int where it currently is
-    just int.
-*/
 
 #ifndef NO_FONTS
 /* I basically drew font.xbm from the fonts at
@@ -118,23 +112,36 @@ struct rgb_triplet {
 #define BM_GET(b, x, y) (*((unsigned int*)(b->data + y * BM_ROW_SIZE(b) + x * BM_BPP)))
 #define BM_SET(b, x, y, c) *((unsigned int*)(b->data + y * BM_ROW_SIZE(b) + x * BM_BPP)) = (c)	
 
-#define BM_SET_RGBA(BMP, X, Y, R, G, B, A) do { \
+#if !ABGR
+#  define BM_SET_RGBA(BMP, X, Y, R, G, B, A) do { \
         int _p = ((Y) * BM_ROW_SIZE(BMP) + (X)*BM_BPP); \
         BMP->data[_p++] = B;\
         BMP->data[_p++] = G;\
         BMP->data[_p++] = R;\
         BMP->data[_p++] = A;\
     } while(0)
-
-#define BM_GETB(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 0])
-#define BM_GETG(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 1])
-#define BM_GETR(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 2])
-#define BM_GETA(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 3])
+#  define BM_GETB(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 0])
+#  define BM_GETG(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 1])
+#  define BM_GETR(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 2])
+#  define BM_GETA(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 3])
+#  define SET_COLOR_RGB(bm, r, g, b) bm->color = 0xFF000000 | ((r) << 16) | ((g) << 8) | (b)
+#else
+#  define BM_SET_RGBA(BMP, X, Y, R, G, B, A) do { \
+        int _p = ((Y) * BM_ROW_SIZE(BMP) + (X)*BM_BPP); \
+        BMP->data[_p++] = R;\
+        BMP->data[_p++] = G;\
+        BMP->data[_p++] = B;\
+        BMP->data[_p++] = A;\
+    } while(0)
+#  define BM_GETR(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 0])
+#  define BM_GETG(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 1])
+#  define BM_GETB(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 2])
+#  define BM_GETA(B,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + 3])
+#  define SET_COLOR_RGB(bm, r, g, b) bm->color = 0xFF000000 | ((b) << 16) | ((g) << 8) | (r)
+#endif
 
 /* N=0 -> B, N=1 -> G, N=2 -> R, N=3 -> A */
 #define BM_GETN(B,N,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + (N)])
-
-#define SET_COLOR_RGB(bm, r, g, b) bm->color = 0xFF000000 | ((r) << 16) | ((g) << 8) | (b)
 
 Bitmap *bm_create(int w, int h) {
     Bitmap *b = malloc(sizeof *b);
@@ -3042,7 +3049,7 @@ unsigned int bm_atoi(const char *text) {
             text++;
             col = (col << 8) + v;
         }
-        return col;
+        return bm_byte_order(col);
     } else if(isalpha(text[0])) {
         const char *q, *p;
 
@@ -3065,7 +3072,7 @@ unsigned int bm_atoi(const char *text) {
             r = tolower(*p) - tolower(*q);
 
             if(r == 0)
-                return color_map[i].color;
+                return bm_byte_order(color_map[i].color);
             else if(r < 0) {
                 max = i - 1;
             } else {
@@ -3088,7 +3095,7 @@ unsigned int bm_atoi(const char *text) {
                 }
                 text++;
             }
-            return col;
+            return bm_byte_order(col);
         }
     } else if(text[0] == '0' && tolower(text[1]) == 'x') {
         text += 2;
@@ -3108,18 +3115,34 @@ unsigned int bm_atoi(const char *text) {
         }
         text++;
     }
-    return col;
+    return bm_byte_order(col);
 }
 
 unsigned int bm_rgb(unsigned char R, unsigned char G, unsigned char B) {
+#if !ABGR
 	return 0xFF000000 | ((R) << 16) | ((G) << 8) | (B);
+#else
+	return 0xFF000000 | ((B) << 16) | ((G) << 8) | (R);
+#endif
 }
 unsigned int bm_rgba(unsigned char R, unsigned char G, unsigned char B, unsigned char A) {
+#if !ABGR
 	return ((A) << 24) | ((R) << 16) | ((G) << 8) | (B);	
+#else
+	return ((A) << 24) | ((B) << 16) | ((G) << 8) | (R);	
+#endif
 }
 
 void bm_set_color(Bitmap *bm, unsigned int col) {
     bm->color = col;
+}
+
+unsigned int bm_byte_order(unsigned int col) {
+#if !ABGR
+	return col;
+#else
+	return (col & 0xFF00FF00) | ((col >> 16) & 0x000000FF) | ((col & 0x000000FF) << 16);
+#endif
 }
 
 unsigned int bm_get_color(Bitmap *bm) {

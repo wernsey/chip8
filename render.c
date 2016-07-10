@@ -81,6 +81,9 @@ void init_game(int argc, char *argv[]) {
 	srand(time(NULL));
 	
 	c8_reset();
+	
+	fg_color = bm_byte_order(fg_color);
+	bg_color = bm_byte_order(bg_color);
 
 	int opt;
 	while((opt = getopt(argc, argv, "f:b:s:dv?")) != -1) {

@@ -280,6 +280,15 @@ unsigned int bm_rgba(unsigned char R, unsigned char G, unsigned char B, unsigned
  */
 void bm_set_color(Bitmap *bm, unsigned int col);
 
+/** `unsigned int bm_byte_order(unsigned int col)`  \
+ * Fixes the input color to be in the proper byte order.
+ * 
+ * The input color should be in the format `0xAARRGGBB`. The output
+ * will be in either `0xAARRGGBB` or `0xAABBGGRR` depending on how the
+ * library was compiled.
+ */
+unsigned int bm_byte_order(unsigned int col);
+
 /** `unsigned int bm_get_color(Bitmap *bc)`  \
  * Retrieves the pen color.
  */
@@ -641,6 +650,9 @@ const char *bm_font_name(int index);
  *      It should default to 1 because for what I'm using the library the alpha values aren't
  *      that important. _I've started adding this, but there are a lot of functions (like 
  *      `bm_fill()`) that don't obey it_
+ * - [] The alpha channel is used in any of the applications for which the bitmap module
+ *      was created, so it is not that well tested and the API may be a bit inconsistent.
+ *      See above.
  */
 
 #endif /* BMP_H */
