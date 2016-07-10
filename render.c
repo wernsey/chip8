@@ -4,8 +4,9 @@
 #include <time.h>
 #include <unistd.h>
 #include <errno.h>
+#include <string.h>
 
-#ifdef SDL2
+#if defined(SDL2) || defined(SDL) || defined(__EMSCRIPTEN__)
 #  include "pocadv.h"
 #else
 #  include <windows.h>
@@ -20,7 +21,46 @@ static int fg_color = 0xAAAAFF;
 static int bg_color = 0x000055;
 static int running = 1;
 
-static void draw_screen();
+/* These are the same keybindings Octo [10]'s  */
+static unsigned int Key_Mapping[16] = {
+#if defined(SDL) || defined(SDL2)
+	KCODEA(x,X),
+	KCODE(1),
+	KCODE(2),
+	KCODE(3),
+	KCODEA(q,Q),
+	KCODEA(w,W),
+	KCODEA(e,E),
+	KCODEA(a,A),
+	KCODEA(s,S),
+	KCODEA(d,D),
+	KCODEA(z,Z),
+	KCODEA(c,C),
+	KCODE(4),
+	KCODEA(r,R),
+	KCODEA(f,F),
+	KCODEA(v,V)
+#else	
+	0x58, /* '0' -> 'x' */
+	0x31, /* '1' -> '1' */
+	0x32, /* '2' -> '2' */
+	0x33, /* '3' -> '3' */
+	0x51, /* '4' -> 'q' */
+	0x57, /* '5' -> 'w' */
+	0x45, /* '6' -> 'e' */
+	0x41, /* '7' -> 'a' */
+	0x53, /* '8' -> 's' */
+	0x44, /* '9' -> 'd' */
+	0x5A, /* 'A' -> 'z' */
+	0x43, /* 'B' -> 'c' */
+	0x34, /* 'C' -> '4' */
+	0x52, /* 'D' -> 'r' */
+	0x46, /* 'E' -> 'f' */
+	0x56, /* 'F' -> 'v' */
+#endif
+};
+
+static void draw_scene();
 
 static void usage() {
 	exit_error("Use these command line variables:\n"
@@ -55,6 +95,7 @@ void init_game(int argc, char *argv[]) {
 			}
 		}
 	}
+	
 	if(optind >= argc) {
         exit_error("You need to specify a CHIP-8 file.");
     }
@@ -68,8 +109,28 @@ void init_game(int argc, char *argv[]) {
 	bm_set_color(screen, 0x202020);
 	bm_clear(screen);
 
-	draw_screen();
+	draw_scene();
 	
+#ifdef __EMSCRIPTEN__
+	/* I Couldn't figure out why this is necessary on the emscripten port: */
+	Key_Mapping[0] = KCODEA(x,X);
+	Key_Mapping[1] = KCODE(1);
+	Key_Mapping[2] = KCODE(2);
+	Key_Mapping[3] = KCODE(3);
+	Key_Mapping[4] = KCODEA(q,Q);
+	Key_Mapping[5] = KCODEA(w,W);
+	Key_Mapping[6] = KCODEA(e,E);
+	Key_Mapping[7] = KCODEA(a,A);
+	Key_Mapping[8] = KCODEA(s,S);
+	Key_Mapping[9] = KCODEA(d,D);
+	Key_Mapping[10] = KCODEA(z,Z);
+	Key_Mapping[11] = KCODEA(c,C);
+	Key_Mapping[12] = KCODE(4);
+	Key_Mapping[13] = KCODEA(r,R);
+	Key_Mapping[14] = KCODEA(f,F);
+	Key_Mapping[15] = KCODEA(v,V);
+#endif
+		
 	rlog("Initialized.");
 }
 
@@ -77,7 +138,7 @@ void deinit_game() {
 	rlog("Done.");
 }
 
-static void draw_screen() {
+static void draw_scene() {
 	int x, y, w, h, c, ox, oy;
 	int hi_res = c8_resolution(&w, &h);
 	if(!hi_res) {
@@ -104,52 +165,16 @@ static void draw_screen() {
 int render(double elapsedSeconds) {
 	int i;
 	static double timer = 0.0;
-	
-	/* These are the same keybindings Octo [10]'s  */
-	int keymapping[16] = {
-#ifdef SDL2
-		0x1B, /* '0' -> 'x' */
-		0x1E, /* '1' -> '1' */
-		0x1F, /* '2' -> '2' */
-		0x20, /* '3' -> '3' */
-		0x14, /* '4' -> 'q' */
-		0x1A, /* '5' -> 'w' */
-		0x08, /* '6' -> 'e' */
-		0x04, /* '7' -> 'a' */
-		0x16, /* '8' -> 's' */
-		0x07, /* '9' -> 'd' */
-		0x1D, /* 'A' -> 'z' */
-		0x06, /* 'B' -> 'c' */
-		0x21, /* 'C' -> '4' */
-		0x15, /* 'D' -> 'r' */
-		0x09, /* 'E' -> 'f' */
-		0x19, /* 'F' -> 'v' */
-#else	
-		0x58, /* '0' -> 'x' */
-		0x31, /* '1' -> '1' */
-		0x32, /* '2' -> '2' */
-		0x33, /* '3' -> '3' */
-		0x51, /* '4' -> 'q' */
-		0x57, /* '5' -> 'w' */
-		0x45, /* '6' -> 'e' */
-		0x41, /* '7' -> 'a' */
-		0x53, /* '8' -> 's' */
-		0x44, /* '9' -> 'd' */
-		0x5A, /* 'A' -> 'z' */
-		0x43, /* 'B' -> 'c' */
-		0x34, /* 'C' -> '4' */
-		0x52, /* 'D' -> 'r' */
-		0x46, /* 'E' -> 'f' */
-		0x56, /* 'F' -> 'v' */
-#endif
-	};
 
 	int key_pressed = 0;
 	for(i = 0; i < 16; i++) {
-		int k = keymapping[i];
+		int k = Key_Mapping[i];		
 		if(keys[k]) {
 			key_pressed = 1;
 			c8_key_down(i);
+#ifndef NDEBUG			
+			rlog("key pressed: %X 0x%02X", i, k);
+#endif
 		} else
 			c8_key_up(i);
 	}
@@ -177,7 +202,7 @@ int render(double elapsedSeconds) {
 			c8_step();
 
 			if(c8_screen_updated()) {
-				draw_screen();
+				draw_scene();
 			}
 		}
 	} else {
@@ -198,7 +223,7 @@ int render(double elapsedSeconds) {
 				return 1;
 			c8_step();
 			if(c8_screen_updated()) {
-				draw_screen();
+				draw_scene();
 			}
 			keys[KCODE(F6)] = 0;
 		}

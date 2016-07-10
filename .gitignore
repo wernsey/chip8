@@ -6,19 +6,26 @@ c8asm
 chip8
 c8dasm
 
+# emscripten generated code
+chip8.js
+chip8.data
+
+# Log files, screenshots
 *.log
 screen-*.bmp
 
+# Backup files
 *.bak
 *~
+test*.asm
+
+# default assembler output file
+a.ch8
 
 .gdbinit
 
 # Generated documentation:
-chip8.html
+chip8-api.html
 
 # http://devernay.free.fr/hacks/chip8/GAMES.zip
 GAMES/*
-
-# default assembler output file
-a.ch8

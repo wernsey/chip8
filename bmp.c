@@ -3594,7 +3594,7 @@ void bm_fillroundrect(Bitmap *b, int x0, int y0, int x1, int y1, int r) {
     }
 }
 
-/* Bexier curve with 3 control points.
+/* Bezier curve with 3 control points.
  * See http://devmag.org.za/2011/04/05/bzier-curves-a-tutorial/
  * I tried the more optimized version at
  * http://members.chello.at/~easyfilter/bresenham.html
@@ -3731,7 +3731,7 @@ static void fs_add_factor(Bitmap *b, int x, int y, int er, int eg, int eb, int f
 }
 
 void bm_reduce_palette(Bitmap *b, int palette[], size_t n) {
-    /* Floyd–Steinberg (error-diffusion) dithering
+    /* Floyd-Steinberg (error-diffusion) dithering
         http://en.wikipedia.org/wiki/Floyd%E2%80%93Steinberg_dithering */
     int x, y;
     if(!b)
