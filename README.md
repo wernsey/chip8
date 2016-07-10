@@ -67,7 +67,14 @@ The `Makefile` will build the SDL version by default, and build the GDI version 
 The SDL-based implementation is intended for portability. The files `pocadv.c` and `pocadv.h` implement a wrapper around the SDL that
 contains the `main()` function, the SDL event loops and so on.
 
-Currently only the Windows version has been tested, but it will be ported to other platforms in the future.
+The included `emscripten.mak` file is used to compile the SDL implementation to JavaScript with [Emscripten](http://emscripten.org/) for
+running the interpreter in a web browser.
+The `chip8.html` is a wrapper around the Emscripten-generated JavaScript. If you want to use this implementation:
+
+1. You need to put your CHIP-8 binary file in a `./GAMES/` directory
+2. Run `make -f emscripten.mak`
+3. Change the `Module.arguments` variable in the JavaScript in `chip8.html`
+4. Serve `chip8.html` in a web server.
 
 ### Win32/GDI Implementation
 
