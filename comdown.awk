@@ -64,11 +64,11 @@
 BEGIN {
     
 	# Configuration options
-	if(!Title) Title = "Documentation";
-	if(!Theme) Theme = 1;
+	if(Title=="") Title = "Documentation";
+	if(Theme=="") Theme = 1;
     #TopLinks = 1;
 	#classic_underscore = 1;
-    if(!MaxWidth) MaxWidth="1080px";
+    if(MaxWidth=="") MaxWidth="1080px";
 	
     Mode = "none"; ToC = ""; ToCLevel = 1;
     CSS = init_css(Theme);
@@ -205,7 +205,13 @@ function trim(st) {
 }
 function filter(st,       res,tmp) {
     if(Mode == "p") {
-        if(!trim(prev) && match(st, /^[[:space:]]*[*-][[:space:]]*[*-][[:space:]]*[*-][-*[:space:]]*$/)) {
+        if(match(st, /^((    )| *\t)/) || match(st, /^[[:space:]]*```/)) {
+            preterm = trim(substr(st, RSTART,RLENGTH));
+            st = substr(st, RSTART+RLENGTH);
+            if(Buf) res = tag("p", scrub(Buf));
+            Buf = trim(st);
+            push("pre");
+        } else if(!trim(prev) && match(st, /^[[:space:]]*[*-][[:space:]]*[*-][[:space:]]*[*-][-*[:space:]]*$/)) {
             if(Buf) res = tag("p", scrub(Buf));
             Buf = "";
             res = res "<hr>\n";
@@ -231,12 +237,6 @@ function filter(st,       res,tmp) {
             if(Buf) res = tag("p", scrub(Buf));
             Buf = scrub(trim(substr(st, RSTART+RLENGTH)));
             push("blockquote");
-        } else if(match(st, /^((    )| *\t)/) || match(st, /^[[:space:]]*```/)) {
-            preterm = trim(substr(st, RSTART,RLENGTH));
-            st = substr(st, RSTART+RLENGTH);
-            if(Buf) res = tag("p", scrub(Buf));
-            Buf = trim(st);
-            push("pre");
         } else if(match(st, /^[[:space:]]*([*+-]|[[:digit:]]+\.)/)) {
             if(Buf) res = tag("p", scrub(Buf));
             Buf="";
@@ -275,7 +275,7 @@ function filter(st,       res,tmp) {
             res = res filter(st);
         }
     } else if(Mode == "ul" || Mode == "ol") {
-        if(ListLevel == 0 || match(st, /^[[:space:]]*$/) && RLENGTH < indent[1]) {
+        if(ListLevel == 0 || match(st, /^[[:space:]]*$/) && (RLENGTH <= indent[1])) { ### [1]
             while(ListLevel > 1)
                 Buf = Buf "\n</" Open[ListLevel--] ">";
             res = tag(Mode, "\n" Buf "\n");
@@ -427,8 +427,10 @@ function scrub(st,    mp, ms, me, r, p, tag, a) {
 			} else if(match(tag, "^[[:graph:]]+@[[:graph:]]+$")) {
 				if(!a) a = tag;
 				r = r "<a href=\"" obfuscate("mailto:" tag) "\">" obfuscate(a) "</a>";
-			} else
-				r = r "&lt;" tag a "&gt;";
+			} else {
+				r = r "&lt;";
+				continue;
+			}
 			
 			st = substr(st, p + 1);			
 		} else if(mp == "&") {
@@ -617,6 +619,7 @@ function init_css(Theme,             css,ss,hr,c1,c2,c3,c4,c5,bg1,bg2,bg3,bg4,ff
     css["h2"] = "color:%color2%;margin-top:0.75em;background:%background2%;padding:0.2em 0.5em;";
     css["h3"] = "color:%color3%;background:%background3%;padding:0.1em 0.5em;";
     css["h4,h5,h6"] = "color:%color4%;padding:0.1em 0.5em;";
+    css["h1,h2,h3,h4,h5,h6"] = "line-height:1.2em;";
 	css["h4"] = "background:%background4%";
     css["p"] = "margin:0.5em;"
     css["hr"] = "background:%hr%;height:2px;border:0;"
