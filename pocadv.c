@@ -331,7 +331,7 @@ int main(int argc, char *argv[]) {
 	logfile = fopen("pocadv.log", "w");
 #endif
 
-    rlog("%s","Pocket Adventure: Application Running");
+    rlog("%s: Application Running", WINDOW_CAPTION);
     
     srand(time(NULL));
     
@@ -415,7 +415,7 @@ int main(int argc, char *argv[]) {
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop(do_iteration, 0, 1);
 #else
-    rlog("%s","Pocket Adventure: Entering main loop");
+    rlog("%s: Entering main loop", WINDOW_CAPTION);
 
     while(!quit) {
         do_iteration();
@@ -424,7 +424,7 @@ int main(int argc, char *argv[]) {
     deinit_game();
     
 #endif
-    rlog("%s","Pocket Adventure: Main loop stopped");
+    rlog("%s: Main loop stopped", WINDOW_CAPTION);
 #ifdef SDL2
 #  if USE_OPENGL
 	SDL_GL_DeleteContext(glcontext);
