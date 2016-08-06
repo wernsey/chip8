@@ -339,7 +339,7 @@ int main(int argc, char *argv[]) {
    
 #ifdef SDL2
 #  if USE_OPENGL
-	window = SDL_CreateWindow("Pocket Adventure (SDL2)",
+	window = SDL_CreateWindow(WINDOW_CAPTION " - SDL2 OpenGL",
 						  SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
 						  SCREEN_WIDTH * SCREEN_SCALE, SCREEN_HEIGHT * SCREEN_SCALE,
 						  SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);		
@@ -358,7 +358,7 @@ int main(int argc, char *argv[]) {
 	
 	if(!setup_view(SCREEN_WIDTH, SCREEN_HEIGHT)) return 1;
 #  else
-    window = SDL_CreateWindow("Pocket Adventure (SDL2)",
+    window = SDL_CreateWindow(WINDOW_CAPTION " - SDL2",
                           SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                           SCREEN_WIDTH * SCREEN_SCALE, SCREEN_HEIGHT * SCREEN_SCALE,
                           SDL_WINDOW_SHOWN);
@@ -384,7 +384,7 @@ int main(int argc, char *argv[]) {
 #else
 /* Using SDL 1.2 */
 #  if USE_OPENGL
-	SDL_WM_SetCaption("Pocket Adventure (SDL1.2)", "game");
+	SDL_WM_SetCaption(WINDOW_CAPTION " - SDL1.2 OpenGL", "game");
 	if(!(window = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 32, SDL_OPENGL))) {
 		rerror("Set Video Mode Failed: %s\n", SDL_GetError());
 		return 1;
@@ -393,7 +393,7 @@ int main(int argc, char *argv[]) {
     screen = bm_create(SCREEN_WIDTH, SCREEN_HEIGHT);
     init_game(argc, argv);
 #else
-    SDL_WM_SetCaption("Pocket Adventure (SDL1.2)", "game");
+    SDL_WM_SetCaption(WINDOW_CAPTION " - SDL1.2", "game");
     window = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 32, SDL_SWSURFACE);
     
     if(SDL_MUSTLOCK(window)) {

@@ -1,3 +1,6 @@
+
+#define WINDOW_CAPTION "CHIP-8 Interpreter"
+
 #ifdef ANDROID
 #  include <SDL.h>
 #  ifndef SDL2
