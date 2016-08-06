@@ -15,7 +15,7 @@
       body {
         font-family: arial;
         margin: 0;
-        padding: 2em;
+        padding: 0em 2em;
         color: #646379;
       }
 
@@ -84,8 +84,8 @@
       }
 
       #controls {
-        /*display: inline-block;
-        float: right;*/
+		position:absolute;
+		right:0em;
         vertical-align: top;
         margin-top: 30px;
         margin-right: 20px;
@@ -113,6 +113,7 @@
 			cursor:pointer; 
 			margin: 0.25em; padding:0.25em;
 			font-size: small; background-color:#EFEFF1;}
+	.button:hover { color: #EFEFF1; border:1px solid #EFEFF1;background-color:#646379;}
     a:active {color:#646379;}
     a:visited {color:#646379;}
 	th,td{padding:0.5em 0.75em;border:1px solid #000055;}
@@ -122,17 +123,6 @@
     </style>
   </head>
   <body>
-
-    <div class="spinner" id='spinner'></div>
-    <div class="emscripten" id="status">Downloading...</div>
-
-    <div class="emscripten">
-      <progress value="0" max="100" id="progress" hidden=1></progress>
-    </div>
-
-    <div class="emscripten_border">
-      <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
-    </div>
     
     <div id='controls'>
 	  <span style="display:none;"><input type="checkbox" id="resize">Resize canvas</span>
@@ -144,6 +134,17 @@
 	  <span class="button" onclick="toggle('output')">Output</span>
 	  <span class="button" onclick="toggle('help')">Help</span>
 	</div>
+
+    <div class="spinner" id='spinner'></div>
+    <div class="emscripten" id="status">Downloading...</div>
+
+    <div class="emscripten">
+      <progress value="0" max="100" id="progress" hidden=1></progress>
+    </div>
+
+    <div class="emscripten_border">
+      <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+    </div>
 	
     <textarea id="output" rows="8" style="display:none;"></textarea>
 
