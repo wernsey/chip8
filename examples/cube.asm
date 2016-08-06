@@ -1,5 +1,10 @@
 ; Companion Cube Sample program. Disregard its advice.
 
+; Assemble the program to a CHIP-8 binary like so:
+;    $ ./c8asm -o GAMES/CUBE8.ch8 examples/cube.asm
+; Once you've assembled it, you can run it in the interpreter like so:
+;    $ ./chip8 -f FFB6F8 -b B2B2B2 GAMES/CUBE.ch8
+
 ; Define some more human-friendly names for the registers
 define boxx V0 ; Sprite X,Y position
 define boxy V1
