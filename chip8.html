@@ -1,5 +1,12 @@
 <!doctype html>
 <html lang="en-us">
+
+  <!--
+  You can pass parameters in the URL to control which game to play and
+  the color oof the foreground and background, eg:
+  chip8.html?background=002804&foreground=46EA74&game=GAMES/INVADERS.ch8
+  -->
+	
   <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
@@ -8,12 +15,17 @@
       body {
         font-family: arial;
         margin: 0;
-        padding: none;
+        padding: 0em 2em;
+        color: #646379;
       }
 
       .emscripten { padding-right: 0; margin-left: auto; margin-right: auto; display: block; }
       div.emscripten { text-align: center; }      
-      div.emscripten_border { border: 1px solid black; }
+      div.emscripten_border { 
+		/*border: 1px solid #646379; 
+		border-radius: 3px;
+		background-color:#EFEFF1; */
+		padding: 1em; }
       /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
       canvas.emscripten { border: 0px none; }
 
@@ -72,8 +84,8 @@
       }
 
       #controls {
-        display: inline-block;
-        float: right;
+		position:absolute;
+		right:0em;
         vertical-align: top;
         margin-top: 30px;
         margin-right: 20px;
@@ -89,25 +101,42 @@
         padding-left: 0px;
         padding-right: 0px;
         display: block;
-        background-color: black;
-        color: white;
+        background-color: #0D210C;
+        color: #61C066;
         font-family: 'Lucida Console', Monaco, monospace;
         outline: none;
+        resize: none;
       }
+      
+    .button { border:1px solid #646379;
+			border-radius:3px;
+			cursor:pointer; 
+			margin: 0.25em; padding:0.25em;
+			font-size: small; background-color:#EFEFF1;}
+	.button:hover { color: #EFEFF1; border:1px solid #EFEFF1;background-color:#646379;}
+    a:active {color:#646379;}
+    a:visited {color:#646379;}
+	th,td{padding:0.5em 0.75em;border:1px solid #000055;}
+	table{border-collapse:collapse;margin:0.5em;}
+	th{color:#646379;border:1px solid #646379;border-bottom:2px solid #646379;}
+	tr:nth-child(odd){background-color:#EFEFF1;}
     </style>
   </head>
   <body>
+    
+    <div id='controls'>
+	  <span style="display:none;"><input type="checkbox" id="resize">Resize canvas</span>
+	  <span style="display:none;"><input type="checkbox" id="pointerLock" checked>Lock/hide mouse pointer &nbsp;&nbsp;&nbsp;</span>
+	  <span class="button" onclick="Module.requestFullScreen(document.getElementById('pointerLock').checked, 
+																				document.getElementById('resize').checked)">
+		Fullscreen
+	  </span>
+	  <span class="button" onclick="toggle('output')">Output</span>
+	  <span class="button" onclick="toggle('help')">Help</span>
+	</div>
 
     <div class="spinner" id='spinner'></div>
     <div class="emscripten" id="status">Downloading...</div>
-
-<span id='controls'>
-  <span><input type="checkbox" id="resize">Resize canvas</span>
-  <span><input type="checkbox" id="pointerLock" checked>Lock/hide mouse pointer &nbsp;&nbsp;&nbsp;</span>
-  <span><input type="button" value="Fullscreen" onclick="Module.requestFullScreen(document.getElementById('pointerLock').checked, 
-                                                                            document.getElementById('resize').checked)">
-  </span>
-</span>
 
     <div class="emscripten">
       <progress value="0" max="100" id="progress" hidden=1></progress>
@@ -116,17 +145,62 @@
     <div class="emscripten_border">
       <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
     </div>
-    <textarea id="output" rows="8"></textarea>
+	
+    <textarea id="output" rows="8" style="display:none;"></textarea>
+
+	<div id="help" style="display:none;">
+		<p>This is the <a href="https://en.wikipedia.org/wiki/CHIP-8" title="">CHIP-8</a> interpreter compiled
+		 with <a href="http://emscripten.org/" title="">Emscripten</a>.</p>
+		<p>The computers on which CHIP-8 originally ran had 16-key hexadecimal keyboards.
+		The keys are mapped to a Qwerty keyboard according to the following table:
+		</p>
+		<table>
+		<tr><th>CHIP-8 Key</th><th>Actual Key</th><th></th><th>CHIP-8 Key</th><th>Actual Key</th></tr>
+		<tr><td>0</td><td>'X'</td><td></td></td><td>8</td><td>'S'</td></tr>
+		<tr><td>1</td><td>'1'</td><td></td><td>9</td><td>'D'</td></tr>
+		<tr><td>2</td><td>'2'</td><td></td><td>A</td><td>'Z'</td></tr>
+		<tr><td>3</td><td>'3'</td><td></td><td>B</td><td>'C'</td></tr>
+		<tr><td>4</td><td>'Q'</td><td></td><td>C</td><td>'4'</td></tr>
+		<tr><td>5</td><td>'W'</td><td></td><td>D</td><td>'R'</td></tr>
+		<tr><td>6</td><td>'E'</td><td></td><td>E</td><td>'F'</td></tr>
+		<tr><td>7</td><td>'A'</td><td></td><td>F</td><td>'V'</td></tr>
+		</table>
+		
+	</div>
 
     <script type='text/javascript'>
       var statusElement = document.getElementById('status');
       var progressElement = document.getElementById('progress');
       var spinnerElement = document.getElementById('spinner');
+      
+      
+      /* https://css-tricks.com/snippets/javascript/get-url-variables/ */
+      function getQueryVariable(variable) {
+		var query = window.location.search.substring(1);
+		var vars = query.split("&");
+		for (var i=0;i<vars.length;i++) {
+		   var pair = vars[i].split("=");
+		   if(pair[0] == variable){return pair[1];}
+		}
+		return(false);
+	  }
+	  
+	  function toggle(id) {
+	    var output=document.getElementById(id);
+	    output.style.display=(output.style.display=="none")?"block":"none";
+	  }
 
       var Module = {
         preRun: [],
         postRun: [], 
-        arguments: ["GAMES/TETRIS.ch8"],
+        /* This is a bit unfortunate: the GAMES/*.ch8 files were compiled
+			into the chip8.data file through emscripten's `--preload-file`
+			option, so you can't add any games without recompiling.
+		It is on my todo list to do something about it, but it isn't high
+		priority at the moment. */
+        arguments: ["-f", getQueryVariable("foreground") || "#AAAAFF", 
+					"-b", getQueryVariable("background") || "#000055", 
+					getQueryVariable("game") || "GAMES/CUBE.ch8"],
         print: (function() {
           var element = document.getElementById('output');
           if (element) element.value = ''; // clear browser cache

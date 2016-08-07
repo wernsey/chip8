@@ -592,7 +592,7 @@ function tag(t, body, attr) {
         return "<" t attr ">" body "</" t ">\n";
 }
 function itag(t, body) {
-    return "<" t attr ">" body "</" t ">";
+    return "<" t ">" body "</" t ">";
 }
 function obfuscate(e,     r,i,t,o) {
     for(i = 1; i <= length(e); i++) {

@@ -1,8 +1,4 @@
 # Makefile for Linux and Windows (MinGW)
-
-# Yes, it does actually compile with TCC:
-#CC=C:\Tools\tcc\tcc.exe
-
 CFLAGS=-c -Wall
 LDFLAGS=-lm
 
@@ -15,7 +11,6 @@ else
   EXECUTABLES=chip8
 endif
 
-
 ifeq ($(BUILD),debug)
   # Debug
   CFLAGS += -O0 -g -I/local/include
@@ -26,7 +21,7 @@ else
   LDFLAGS += -s
 endif
 
-all: c8asm c8dasm $(EXECUTABLES) docs
+all: c8asm c8dasm $(EXECUTABLES) docs example
 
 debug:
 	make BUILD=debug
@@ -54,6 +49,12 @@ render-sdl.o: render.c chip8.h pocadv.h bmp.h
 	$(CC) $(CFLAGS) -DSDL2 `sdl2-config --cflags` $< -o $@
 pocadv.o: pocadv.c pocadv.h bmp.h
 	$(CC) $(CFLAGS) -DSDL2 `sdl2-config --cflags` $< -o $@
+
+# Example
+example : GAMES/CUBE8.ch8
+GAMES/CUBE8.ch8 : examples/cube.asm ./c8asm
+	mkdir -p GAMES
+	./c8asm -o $@ $<
 
 # Windows GDI-version specific:
 chip8-gdi: gdi.o render-gdi.o chip8.o bmp.o
