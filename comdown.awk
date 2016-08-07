@@ -77,7 +77,7 @@ BEGIN {
     srand();
 }
 
-/\/\*\*/    {
+Mode == "none" && /\/\*\*/    {
     Mode = "p";
     gsub(/\/\*/,"");
 }
@@ -209,7 +209,7 @@ function filter(st,       res,tmp) {
             preterm = trim(substr(st, RSTART,RLENGTH));
             st = substr(st, RSTART+RLENGTH);
             if(Buf) res = tag("p", scrub(Buf));
-            Buf = trim(st);
+            Buf = st;
             push("pre");
         } else if(!trim(prev) && match(st, /^[[:space:]]*[*-][[:space:]]*[*-][[:space:]]*[*-][-*[:space:]]*$/)) {
             if(Buf) res = tag("p", scrub(Buf));
@@ -259,7 +259,7 @@ function filter(st,       res,tmp) {
         else if(match(st, /^[[:space:]]*>/))
             Buf = Buf "\n" scrub(trim(substr(st, RSTART+RLENGTH)));
         else if(match(st, /^[[:space:]]*$/)) {
-            res = tag("blockquote", "<p>\n" trim(Buf) "\n</p>");
+            res = tag("blockquote", tag("p", trim(Buf)));
             pop();
             res = res filter(st);
         } else
@@ -269,13 +269,14 @@ function filter(st,       res,tmp) {
             Buf = Buf ((Buf)?"\n":"") substr(st, RSTART+RLENGTH);
         else {
             gsub(/\t/,"    ",Buf);
-            res = tag("pre", "<code>" escape(Buf) "\n</code>");
+			if(length(trim(Buf)) > 0)
+            	res = tag("pre", tag("code", escape(Buf)));
             pop();
             if(preterm) sub(/^[[:space:]]*```/,"",st);
             res = res filter(st);
         }
     } else if(Mode == "ul" || Mode == "ol") {
-        if(ListLevel == 0 || match(st, /^[[:space:]]*$/) && (RLENGTH <= indent[1])) { ### [1]
+        if(ListLevel == 0 || match(st, /^[[:space:]]*$/) && (RLENGTH <= indent[1])) {
             while(ListLevel > 1)
                 Buf = Buf "\n</" Open[ListLevel--] ">";
             res = tag(Mode, "\n" Buf "\n");
@@ -296,9 +297,9 @@ function filter(st,       res,tmp) {
                 if(match(tmp,/^[[:space:]]*\[[xX[:space:]]?\]/)) {
                     st = substr(tmp,RLENGTH+1);
                     tmp = tolower(substr(tmp,RSTART,RLENGTH));
-                    Buf = Buf "\n<li><input type=\"checkbox\" " (index(tmp,"x")?"checked":"") " disabled>" scrub(st);
+                    Buf = Buf "<li><input type=\"checkbox\" " (index(tmp,"x")?"checked":"") " disabled>" scrub(st);
                 } else
-                    Buf = Buf "\n<li>" scrub(tmp);
+                    Buf = Buf "<li>" scrub(tmp);
             } else if(match(st, /^[[:space:]]*$/)){
                 Buf = Buf "<br>\n";
             } else {
@@ -310,7 +311,7 @@ function filter(st,       res,tmp) {
     prev = st;
     return res;
 }
-function scrub(st,    mp, ms, me, r, p, tag, a) {	
+function scrub(st,    mp, ms, me, r, p, tg, a) {	
 	sub(/  $/,"<br>\n",st);
 	gsub(/(  |[[:space:]]+\\)\n/,"<br>\n",st);
 	while(match(st, /(__?|\*\*?|~~|`+|[&><\\])/)) {
@@ -322,8 +323,8 @@ function scrub(st,    mp, ms, me, r, p, tag, a) {
 		
 		if(!classic_underscore && match(mp,/_+/)) {		
 			if(match(ms,/[[:alnum:]]/) && match(me,/[[:alnum:]]/)) {
-				tag = substr(st, 1, index(st, mp));
-				r = r tag;
+				tg = substr(st, 1, index(st, mp));
+				r = r tg;
 				st = substr(st, index(st, mp) + 1);
 				continue;
 			}
@@ -360,7 +361,7 @@ function scrub(st,    mp, ms, me, r, p, tag, a) {
 				continue;
 			}
 			ms = ms substr(st,1,p-1);
-			r = r "<em>" scrub(ms) "</em>";
+			r = r itag("em", scrub(ms));
 			st = substr(st,p+length(mp));
 		} else if(mp == "__" || mp == "**") {
 			if(match(me,/[[:space:]]/)) {
@@ -378,7 +379,7 @@ function scrub(st,    mp, ms, me, r, p, tag, a) {
 				continue;
 			}
 			ms = ms substr(st,1,p-1);
-			r = r "<strong>" scrub(ms) "</strong>";
+			r = r itag("strong", scrub(ms));
 			st = substr(st,p+length(mp));
 		} else if(mp == "~~") {
 			p = index(st, mp);
@@ -392,7 +393,7 @@ function scrub(st,    mp, ms, me, r, p, tag, a) {
 				p = index(st, mp);
 			}
 			ms = ms substr(st,1,p-1);
-			r = r "<del>" scrub(ms) "</del>";
+			r = r itag("del", scrub(ms));
 			st = substr(st,p+length(mp));
 		} else if(match(mp, /`+/)) {
 			p = index(st, mp);
@@ -401,7 +402,7 @@ function scrub(st,    mp, ms, me, r, p, tag, a) {
 				continue;
 			}
 			ms = substr(st,1,p-1);
-			r = r "<code>" escape(ms) "</code>";
+			r = r itag("code", escape(ms));
 			st = substr(st,p+length(mp));
 		} else if(mp == ">") {
 			r = r "&gt;";
@@ -412,21 +413,21 @@ function scrub(st,    mp, ms, me, r, p, tag, a) {
 				r = r "&lt;";
 				continue;
 			}
-			tag = substr(st, 1, p - 1);
-			if(match(tag,/^[[:alpha:]]+[[:space:]]/)) {
-				a = substr(tag,RSTART+RLENGTH-1);
-				tag = substr(tag,1,RLENGTH-1);
+			tg = substr(st, 1, p - 1);
+			if(match(tg,/^[[:alpha:]]+[[:space:]]/)) {
+				a = substr(tg,RSTART+RLENGTH-1);
+				tg = substr(tg,1,RLENGTH-1);
 			} else
 				a = "";
 			
-			if(match(tolower(tag), "^/?(a|abbr|div|span|blockquote|pre|img|code|p|em|strong|sup|sub|del|ins|s|u|b|i|br|hr|ul|ol|li|table|thead|tfoot|tbody|tr|th|td|caption|column|col|colgroup|figure|figcaption|dl|dd|dt|mark|cite|q|var|samp|small)$")) {
-				r = r "<" tag a ">";
-			} else if(match(tag, "^[[:alpha:]]+://[[:graph:]]+$")) {
-				if(!a) a = tag;
-				r = r "<a href=\"" tag "\">" a "</a>";
-			} else if(match(tag, "^[[:graph:]]+@[[:graph:]]+$")) {
-				if(!a) a = tag;
-				r = r "<a href=\"" obfuscate("mailto:" tag) "\">" obfuscate(a) "</a>";
+			if(match(tolower(tg), "^/?(a|abbr|div|span|blockquote|pre|img|code|p|em|strong|sup|sub|del|ins|s|u|b|i|br|hr|ul|ol|li|table|thead|tfoot|tbody|tr|th|td|caption|column|col|colgroup|figure|figcaption|dl|dd|dt|mark|cite|q|var|samp|small)$")) {
+				r = r "<" tg a ">";
+			} else if(match(tg, "^[[:alpha:]]+://[[:graph:]]+$")) {
+				if(!a) a = tg;
+				r = r "<a href=\"" tg "\">" a "</a>";
+			} else if(match(tg, "^[[:graph:]]+@[[:graph:]]+$")) {
+				if(!a) a = tg;
+				r = r "<a href=\"" obfuscate("mailto:" tg) "\">" obfuscate(a) "</a>";
 			} else {
 				r = r "&lt;";
 				continue;
@@ -585,10 +586,13 @@ function tag(t, body, attr) {
     if(attr)
         attr = " " trim(attr);
     # https://www.w3.org/TR/html5/grouping-content.html#the-p-element
-    if(t == "p" && (match(body, /<\/?(div|table|blockquote|dl|ol|ul|h[[:digit:]]|hr|pre)[>[:space:]]/))||match(body,/!\[toc\]/))
+    if(t == "p" && (match(body, /<\/?(div|table|blockquote|dl|ol|ul|h[[:digit:]]|hr|pre)[>[:space:]]/))|| (match(body,/!\[toc\]/) && substr(body, RSTART-1,1) != "\\"))
         return "<" t attr ">" body "\n";
     else
         return "<" t attr ">" body "</" t ">\n";
+}
+function itag(t, body) {
+    return "<" t attr ">" body "</" t ">";
 }
 function obfuscate(e,     r,i,t,o) {
     for(i = 1; i <= length(e); i++) {
@@ -615,14 +619,14 @@ function init_css(Theme,             css,ss,hr,c1,c2,c3,c4,c5,bg1,bg2,bg3,bg4,ff
 	
     css["body"] = "color:%color1%;font-family:%font-family%;line-height:1.5em;" \
                 "padding:1em 2em;width:80%;max-width:%maxwidth%;margin:0 auto;min-height:100%;float:none;";
-    css["h1"] = "color:%color1%;margin-top:1.0em;background:%background1%;padding:0.3em 0.5em;";
-    css["h2"] = "color:%color2%;margin-top:0.75em;background:%background2%;padding:0.2em 0.5em;";
-    css["h3"] = "color:%color3%;background:%background3%;padding:0.1em 0.5em;";
-    css["h4,h5,h6"] = "color:%color4%;padding:0.1em 0.5em;";
-    css["h1,h2,h3,h4,h5,h6"] = "line-height:1.2em;";
-	css["h4"] = "background:%background4%";
-    css["p"] = "margin:0.5em;"
-    css["hr"] = "background:%hr%;height:2px;border:0;"
+    css["h1"] = "color:%color1%;border-bottom:1px solid %background1%;padding:0.3em 0.1em;";
+    css["h2"] = "color:%color2%;border-bottom:1px solid %background2%;padding:0.2em 0.1em;";
+    css["h3"] = "color:%color3%;border-bottom:1px solid %background3%;padding:0.1em 0.1em;";
+    css["h4,h5,h6"] = "color:%color4%;padding:0.1em 0.1em;";
+    css["h1,h2,h3,h4,h5,h6"] = "font-weight:normal;line-height:1.2em;";
+	css["h4"] = "border-bottom:1px solid %background4%";
+    css["p"] = "margin:0.5em 0.1em;"
+    css["hr"] = "background:%hr%;height:1px;border:0;"
     css["a"] = "color:%color2%;";
     css["a:visited"] = "color:%color2%;";
     css["a:active"] = "color:%color4%;";
@@ -631,7 +635,7 @@ function init_css(Theme,             css,ss,hr,c1,c2,c3,c4,c5,bg1,bg2,bg3,bg4,ff
     css["strong,b"] = "color:%color1%";
     css["code"] = "color:%color2%;";
     css["blockquote"] = "margin-left:1em;color:%color2%;background:%color5%;border-left:0.2em solid %color3%;border-radius:3px;padding:0.25em 0.5em;";
-    css["pre"] = "color:%color2%;background:%color5%;border:1px solid %color3%;border-radius:3px;line-height:1.25em;margin:0.25em 0.5em;padding:0.5em;";
+    css["pre"] = "color:%color2%;background:%color5%;border-radius:5px;line-height:1.25em;margin:0.25em 0.5em;padding:0.75em;";
     css["table"] = "border-collapse:collapse;margin:0.5em;";
     css["th,td"] = "padding:0.5em 0.75em;border:1px solid %color4%;";
     css["th"] = "color:%color2%;border:1px solid %color3%;border-bottom:2px solid %color3%;";
@@ -646,7 +650,6 @@ function init_css(Theme,             css,ss,hr,c1,c2,c3,c4,c5,bg1,bg2,bg3,bg4,ff
     css["a#toc-button"] = "color:%color3%;background:%color5%;cursor:pointer;font-size:small;padding: 0.3em 0.5em 0.5em 0.5em;font-family:monospace;border-radius:3px;";
     css["a#toc-button:hover"] = "color:%color5%;background:%color3%;";
     css["div#table-of-contents"] = "padding:0;font-size:smaller;";
-    #css["abbr"] = "color:%color2%;cursor:help;";
     css["abbr"] = "cursor:help;";
     css["ol.footnotes"] = "font-size:small;color:%color4%";
     css["a.footnote"] = "font-size:smaller;text-decoration:initial;";
@@ -670,19 +673,19 @@ function init_css(Theme,             css,ss,hr,c1,c2,c3,c4,c5,bg1,bg2,bg3,bg4,ff
         c1="#315067";c2="#4F9E9C";c3="#77AD93";c4="#95CE94";c5="#F6FFEE";
         ff="Verdana, sans-serif;";
     } else if(Theme==7){
-        c1="#35305D";c2="#646379";c3="#7A74A5";c4="#646392";c5="#EEEEEE";
+        c1="#35305D";c2="#646379";c3="#7A74A5";c4="#646392";c5="#fafafa";
     } else if(Theme==8){
         c1="#215FC2";c2="#D49095";c3="#AD90D4";c4="#90D4CF";c5="#F7FDEF";
     } else {
-        c1="#092859";c2="#1351b5";c3="#B97813";c4="#DC7435";c5="#F6F8FF";
+        c1="#092859";c2="#1351b5";c3="#d47034";c4="#DC7435";c5="#F6F8FF";
     }
 	if(!ff) ff = "sans-serif"
 	
     for(i = 0; i<=255; i++)_hex[sprintf("%02X",i)]=i;
-    bg1 = bright(c1,0.9);
-    bg2 = bright(c2,0.9);
-    bg3 = bright(c3,0.9);
-    bg4 = bright(c3,0.95);
+    bg1 = bright(c1,0.5);
+    bg2 = bright(c2,0.5);
+    bg3 = bright(c3,0.5);
+    bg4 = bright(c3,0.75);
     hr = bright(c1,0.75);
     for(k in css)
         ss = ss "\n" k "{" css[k] "}";
