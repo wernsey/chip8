@@ -62,14 +62,14 @@
 # without any warranty.
 
 BEGIN {
-    
+
 	# Configuration options
 	if(Title=="") Title = "Documentation";
 	if(Theme=="") Theme = 1;
     #TopLinks = 1;
 	#classic_underscore = 1;
     if(MaxWidth=="") MaxWidth="1080px";
-	
+
     Mode = "none"; ToC = ""; ToCLevel = 1;
     CSS = init_css(Theme);
     for(i = 0; i < 128; i++)
@@ -178,7 +178,7 @@ END {
         Out = fix_links(Out);
         Out = fix_abbrs(Out);
         Out = make_toc(Out);
-        
+
         print trim(Out);
         if(footnotes) {
             footnotes = fix_links(footnotes);
@@ -237,7 +237,7 @@ function filter(st,       res,tmp) {
             if(Buf) res = tag("p", scrub(Buf));
             Buf = scrub(trim(substr(st, RSTART+RLENGTH)));
             push("blockquote");
-        } else if(match(st, /^[[:space:]]*([*+-]|[[:digit:]]+\.)/)) {
+        } else if(match(st, /^[[:space:]]*([*+-]|[[:digit:]]+\.)[[:space:]]/)) {
             if(Buf) res = tag("p", scrub(Buf));
             Buf="";
             match(st, /^[[:space:]]*/);
@@ -311,7 +311,7 @@ function filter(st,       res,tmp) {
     prev = st;
     return res;
 }
-function scrub(st,    mp, ms, me, r, p, tg, a) {	
+function scrub(st,    mp, ms, me, r, p, tg, a) {
 	sub(/  $/,"<br>\n",st);
 	gsub(/(  |[[:space:]]+\\)\n/,"<br>\n",st);
 	while(match(st, /(__?|\*\*?|~~|`+|[&><\\])/)) {
@@ -320,8 +320,8 @@ function scrub(st,    mp, ms, me, r, p, tg, a) {
 		ms = substr(st, RSTART-1,1);
 		me = substr(st, RSTART+RLENGTH, 1);
 		p = RSTART+RLENGTH;
-		
-		if(!classic_underscore && match(mp,/_+/)) {		
+
+		if(!classic_underscore && match(mp,/_+/)) {
 			if(match(ms,/[[:alnum:]]/) && match(me,/[[:alnum:]]/)) {
 				tg = substr(st, 1, index(st, mp));
 				r = r tg;
@@ -329,11 +329,11 @@ function scrub(st,    mp, ms, me, r, p, tg, a) {
 				continue;
 			}
 		}
-		st = substr(st, p);		
+		st = substr(st, p);
 		r = r a;
 		ms = "";
-		
-		if(mp == "\\") {			
+
+		if(mp == "\\") {
 			if(match(st, /^!?\[/)) {
 				r = r "\\" substr(st, RSTART, RLENGTH);
 				st = substr(st, 2);
@@ -350,12 +350,12 @@ function scrub(st,    mp, ms, me, r, p, tg, a) {
 				r = r mp;
 				continue;
 			}
-			p = index(st, mp);			
+			p = index(st, mp);
 			while(p && match(substr(st, p-1, 1),/[\\[:space:]]/)) {
 				ms = ms substr(st, 1, p-1) mp;
 				st = substr(st, p + length(mp));
 				p = index(st, mp);
-			}			
+			}
 			if(!p) {
 				r = r mp ms;
 				continue;
@@ -373,7 +373,7 @@ function scrub(st,    mp, ms, me, r, p, tg, a) {
 				ms = ms substr(st, 1, p-1) mp;
 				st = substr(st, p + length(mp));
 				p = index(st, mp);
-			}		
+			}
 			if(!p) {
 				r = r mp ms;
 				continue;
@@ -407,7 +407,7 @@ function scrub(st,    mp, ms, me, r, p, tg, a) {
 		} else if(mp == ">") {
 			r = r "&gt;";
 		} else if(mp == "<") {
-			
+
 			p = index(st, ">");
 			if(!p) {
 				r = r "&lt;";
@@ -419,7 +419,7 @@ function scrub(st,    mp, ms, me, r, p, tg, a) {
 				tg = substr(tg,1,RLENGTH-1);
 			} else
 				a = "";
-			
+
 			if(match(tolower(tg), "^/?(a|abbr|div|span|blockquote|pre|img|code|p|em|strong|sup|sub|del|ins|s|u|b|i|br|hr|ul|ol|li|table|thead|tfoot|tbody|tr|th|td|caption|column|col|colgroup|figure|figcaption|dl|dd|dt|mark|cite|q|var|samp|small)$")) {
 				r = r "<" tg a ">";
 			} else if(match(tg, "^[[:alpha:]]+://[[:graph:]]+$")) {
@@ -432,8 +432,8 @@ function scrub(st,    mp, ms, me, r, p, tg, a) {
 				r = r "&lt;";
 				continue;
 			}
-			
-			st = substr(st, p + 1);			
+
+			st = substr(st, p + 1);
 		} else if(mp == "&") {
 			if(match(st, /^[#[:alnum:]]+;/)) {
 				r = r "&" substr(st, 1, RLENGTH);
@@ -442,7 +442,7 @@ function scrub(st,    mp, ms, me, r, p, tg, a) {
 				r = r "&amp;";
 			}
 		}
-	}	
+	}
     return r st;
 }
 
@@ -473,7 +473,7 @@ function make_toc(st,              r,p,dis,t,n) {
     p = match(st, /!\[toc[-+]?\]/);
     while(p) {
 		++n;
-		dis = index(substr(st,RSTART,RLENGTH),"+"); 
+		dis = index(substr(st,RSTART,RLENGTH),"+");
 		t = "<div>\n<small><a id=\"toc-button\" onclick=\"toggle_toc(" n ")\"><span id=\"btn-text\">" (dis?"[-]":"[+]") "</span>&nbsp;Contents</a></small>\n" \
 			"<div id=\"table-of-contents-" n "\" style=\"display:" (dis?"block":"none") ";\">\n<ul class=\"toc-1\">" ToC "</ul>\n</div>\n</div>";
         r = r substr(st,1,RSTART-1);
@@ -616,7 +616,7 @@ function bright(c,a ,r,g,b) {
 }
 function init_css(Theme,             css,ss,hr,c1,c2,c3,c4,c5,bg1,bg2,bg3,bg4,ff,i) {
     if(Theme == "0") return "";
-	
+
     css["body"] = "color:%color1%;font-family:%font-family%;line-height:1.5em;" \
                 "padding:1em 2em;width:80%;max-width:%maxwidth%;margin:0 auto;min-height:100%;float:none;";
     css["h1"] = "color:%color1%;border-bottom:1px solid %background1%;padding:0.3em 0.1em;";
@@ -656,7 +656,7 @@ function init_css(Theme,             css,ss,hr,c1,c2,c3,c4,c5,bg1,bg2,bg3,bg4,ff
     css["a.footnote-back"] = "text-decoration:initial;font-size:x-small;";
     css[".fade"] = "color:%color5%;";
     css[".highlight"] = "color:%color2%;background-color:%color5%;";
-	
+
     if(Theme==2){
         c1="#303F9F";c2="#0449CC";c3="#2162FA";c4="#4B80FB";c5="#EDF2FF";
         ff="\"Trebuchet MS\", Helvetica, sans-serif";
@@ -680,7 +680,7 @@ function init_css(Theme,             css,ss,hr,c1,c2,c3,c4,c5,bg1,bg2,bg3,bg4,ff
         c1="#092859";c2="#1351b5";c3="#d47034";c4="#DC7435";c5="#F6F8FF";
     }
 	if(!ff) ff = "sans-serif"
-	
+
     for(i = 0; i<=255; i++)_hex[sprintf("%02X",i)]=i;
     bg1 = bright(c1,0.5);
     bg2 = bright(c2,0.5);
