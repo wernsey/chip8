@@ -342,13 +342,13 @@ void bm_get_hsl(unsigned int col, double *H, double *S, double *L);
  */
 unsigned int bm_byte_order(unsigned int col);
 
-/** `int bm_lerp(int color1, int color2, double t)`  \
+/** `unsigned int bm_lerp(unsigned int color1, unsigned int color2, double t)`  \
  * Computes the color that is a distance `t` along the line between
  * `color1` and `color2`.
  *
  * If `t` is 0 it returns `color1`. If `t` is 1.0 it returns `color2`.
  */
-int bm_lerp(int color1, int color2, double t);
+unsigned int bm_lerp(unsigned int color1, unsigned int color2, double t);
 
 /**
  * ### Blitting Functions
@@ -452,14 +452,34 @@ Bitmap *bm_resample_bcub(const Bitmap *in, int nw, int nh);
 void bm_swap_color(Bitmap *b, unsigned int src, unsigned int dest);
 
 #ifdef NULL /* <stdlib.h> included? - required for size_t */
-/** `void bm_reduce_palette(Bitmap *b, int palette[], size_t n)`  \
+/** `void bm_reduce_palette(Bitmap *b, unsigned int palette[], size_t n)`  \
  * Reduces the colors in the bitmap `b` to the colors in `palette`
  * by applying Floyd-Steinberg dithering.
  *
  * `palette` is an array of integers containing the new palette and
  * `n` is the number of entries in the palette.
  */
-void bm_reduce_palette(Bitmap *b, int palette[], size_t n);
+void bm_reduce_palette(Bitmap *b, unsigned int palette[], size_t n);
+
+/** `void bm_reduce_palette_OD4(Bitmap *b, unsigned int palette[], size_t n)`  \
+ * Reduces the colors in the bitmap `b` to the colors in `palette`
+ * by applying [ordered dithering](https://en.wikipedia.org/wiki/Ordered_dithering) 
+ * and a 4x4 Bayer matrix.
+ *
+ * `palette` is an array of integers containing the new palette and
+ * `n` is the number of entries in the palette.
+ */
+void bm_reduce_palette_OD4(Bitmap *b, unsigned int palette[], size_t n);
+
+/** `void bm_reduce_palette_OD8(Bitmap *b, unsigned int palette[], size_t n)`  \
+ * Reduces the colors in the bitmap `b` to the colors in `palette`
+ * by applying [ordered dithering](https://en.wikipedia.org/wiki/Ordered_dithering) 
+ * and a 8x8 Bayer matrix.
+ *
+ * `palette` is an array of integers containing the new palette and
+ * `n` is the number of entries in the palette.
+ */
+void bm_reduce_palette_OD8(Bitmap *b, unsigned int palette[], size_t n);
 #endif
 
 /**
@@ -550,10 +570,7 @@ void bm_fill(Bitmap *b, int x, int y);
  * Structure that represents the details about a font.
  * * `const char *type` - a text description of the type of font
  * * `int (*puts)(Bitmap *b, int x, int y, const char *text)` -
- *   Pointer to the structure that will actually render the text.
- * * `void (*dtor)(struct bitmap_font *font)` -
- *   Destructor that will be used to delete the font if the bitmap is deleted
- *   or another font chosen.
+ *   Pointer to the function that will actually render the text.
  * * `int (*width)(struct bitmap_font *font)` - Function that returns the
  *   width (in pixels) of a single character in the font.
  * * `int (*height)(struct bitmap_font *font)` - Function that returns the
@@ -563,7 +580,6 @@ void bm_fill(Bitmap *b, int x, int y);
 typedef struct bitmap_font {
     const char *type;
     int (*puts)(Bitmap *b, int x, int y, const char *text);
-    void (*dtor)(struct bitmap_font *font);
     int (*width)(struct bitmap_font *font);
     int (*height)(struct bitmap_font *font);
     void *data;
@@ -573,6 +589,12 @@ typedef struct bitmap_font {
  * Changes the font used to render text on the bitmap.
  */
 void bm_set_font(Bitmap *b, BmFont *font);
+
+/** `void bm_reset_font(BmFont *b)` \
+ * Resets the font used to draw on the `Bitmap` to the 
+ * default *Apple II*-inspired font
+ */
+void bm_reset_font(Bitmap *b);
 
 /** `int bm_text_width(Bitmap *b, const char *s)`  \
  * Returns the width in pixels of a string of text.
@@ -614,50 +636,10 @@ int bm_printf(Bitmap *b, int x, int y, const char *fmt, ...);
  */
 BmFont *bm_make_xbm_font(const unsigned char *bits, int spacing);
 
-#ifndef NO_FONTS
-/**
- * #### Built-in XBM fonts.
- * There are a number of built-in fonts available which is placed in the
- * `fonts/` directory.
- *
- * If you don't wish to use these, compile with the `-DNO_FONTS` flag.
- * `enum bm_fonts`  \
- * Built-in XBM fonts that can be set with `bm_std_font()`
- * * `BM_FONT_NORMAL` - A default font.
- * * `BM_FONT_BOLD` - A bold font.
- * * `BM_FONT_CIRCUIT` - A "computer" font that looks like a circuit board.
- * * `BM_FONT_HAND` - A font that looks like hand writing.
- * * `BM_FONT_SMALL` - A small font.
- * * `BM_FONT_SMALL_I` - A variant of the small font with the foreground and background inverted.
- * * `BM_FONT_THICK` - A thicker variant of the normal font.
+/** `void bm_free_xbm_font(BmFont *font)`  \
+ * Frees an XBM font previously created with `bm_make_xbm_font()`.
  */
-enum bm_fonts {
-    BM_FONT_NORMAL,
-    BM_FONT_BOLD,
-    BM_FONT_CIRCUIT,
-    BM_FONT_HAND,
-    BM_FONT_SMALL,
-    BM_FONT_SMALL_I,
-    BM_FONT_THICK
-};
-
-/** `void bm_std_font(Bitmap *b, enum bm_fonts font)`  \
- * Sets the font to one of the standard (built-in) ones.
- */
-void bm_std_font(Bitmap *b, enum bm_fonts font);
-
-/** `int bm_font_index(const char *name)`  \
- * Returns the index of one of the standard (built-in) XBM fonts identified
- * by the `name`.
- */
-int bm_font_index(const char *name);
-
-/** `const char *bm_font_name(int index)`  \
- * Returns the name of the standard (built-in) XBM font identified
- * by `index`, which should fall in the range of the `enum bm_fonts`.
- */
-const char *bm_font_name(int index);
-#endif /* NO_FONTS */
+void bm_free_xbm_font(BmFont *font);
 
 #if defined(__cplusplus) || defined(c_plusplus)
 } /* extern "C" */
@@ -667,11 +649,7 @@ const char *bm_font_name(int index);
  * TODO
  * ----
  * - [] I should also go through the API and make the naming a bit more consistent.
- *   - [] and double check that the parameters of functions are consistent, e.g
- *     all functions that take `x0,y0 - x1,y1` parameters use those names and not `x1,y1 - x2,y2`
- *   - [x] ~~and that `x0,y0` is inclusive and `x1,y1` is exclusive.~~
- *      You can't do that because `bm_rect()` *should* include `<x1,y1>`, but clipping shouldn't.
- *      It would've been a different story if it used `<w,h>` instead.
+ *   - Functions like `bm_rect()` should use `w,h` instead of `x1,y1` as parameters.
  * - [] How about replacing functions like `bm_brightness()` with a `bm_foreach()`
  *      function that takes a callback which iterates over all the pixels to simplify
  *      the API.  \
@@ -680,16 +658,6 @@ const char *bm_font_name(int index);
  *      operations to apply a `& 0x00FFFFFF` so that alpha values are ignored.  \
  *      It is not properly tested because I don't have any serious projects that
  *      depends on the alpha values at the moment.
- * - [x] Add support for the `rgba(r,g,b,a)` syntax of specifying colors.
- *   - [x] Make sure the existing `rgb(r,g,b)` syntax is actually working.
- * - [x] Add support for the `%` form for specifying colors: `rgb(10%,20%,30%)`.
- *      _Those percentages are floats_.
- * - [x] Add support for the `hsl(h,s,l)` and `hsla(h,s,l,a)` syntax for specifying
- *      colors. See <https://en.wikipedia.org/wiki/Web_colors#CSS_colors>,
- *      <https://developer.mozilla.org/en/docs/Web/CSS/color_value> and
- *      <https://en.wikipedia.org/wiki/HSL_and_HSV>.
- *   - Formulas here <https://en.wikipedia.org/wiki/HSL_and_HSV#Converting_to_RGB>
- *   - You'll find examples on the wikipedia here: <https://en.wikipedia.org/wiki/HSL_and_HSV#Examples>
  */
 
 #endif /* BMP_H */

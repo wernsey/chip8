@@ -49,22 +49,6 @@ FIXME: Not all functions that should respect IGNORE_ALPHA does so.
 
 #include "bmp.h"
 
-#ifndef NO_FONTS
-/* I basically drew font.xbm from the fonts at
- * http://damieng.com/blog/2011/02/20/typography-in-8-bits-system-fonts
- * The Apple ][ font turned out to be the nicest normal font.
- * The bold font was inspired by Commodore 64.
- * I later added some others for a bit of variety.
- */
-#include "fonts/bold.xbm"
-#include "fonts/circuit.xbm"
-#include "fonts/hand.xbm"
-#include "fonts/normal.xbm"
-#include "fonts/small.xbm"
-#include "fonts/smallinv.xbm"
-#include "fonts/thick.xbm"
-#endif
-
 #define FONT_WIDTH 96
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
@@ -112,8 +96,8 @@ struct rgb_triplet {
 #define BM_BLOB_SIZE(B) (B->w * B->h * BM_BPP)
 #define BM_ROW_SIZE(B)  (B->w * BM_BPP)
 
-#define BM_GET(b, x, y) (*((unsigned int*)(b->data + y * BM_ROW_SIZE(b) + x * BM_BPP)))
-#define BM_SET(b, x, y, c) *((unsigned int*)(b->data + y * BM_ROW_SIZE(b) + x * BM_BPP)) = (c)
+#define BM_GET(b, x, y) (*((unsigned int*)(b->data + (y) * BM_ROW_SIZE(b) + (x) * BM_BPP)))
+#define BM_SET(b, x, y, c) *((unsigned int*)(b->data + (y) * BM_ROW_SIZE(b) + (x) * BM_BPP)) = (c)
 
 #if !ABGR
 #  define BM_SET_RGBA(BMP, X, Y, R, G, B, A) do { \
@@ -161,9 +145,7 @@ Bitmap *bm_create(int w, int h) {
     memset(b->data, 0x00, BM_BLOB_SIZE(b));
 
     b->font = NULL;
-#ifndef NO_FONTS
-    bm_std_font(b, BM_FONT_NORMAL);
-#endif
+    bm_reset_font(b);
 
     bm_set_color(b, 0xFFFFFFFF);
 
@@ -1805,7 +1787,7 @@ static int bm_save_gif(Bitmap *b, const char *fname) {
 
     nc = count_colors_build_palette(b, gct);
     if(nc < 0) {
-        int palette[256], q;
+        unsigned int palette[256], q;
 
         /* Too many colors */
         sgct = 256;
@@ -1854,7 +1836,11 @@ static int bm_save_gif(Bitmap *b, const char *fname) {
     }
 
     /* See if we can find the background color in the palette */
+#ifndef IGNORE_ALPHA
     bg = b->color & 0x00FFFFFF;
+#else
+    bg = b->color;
+#endif
     bg = bsrch_palette_lookup(gct, bg, 0, nc - 1);
     if(bg >= 0) {
         gif.lsd.background = bg;
@@ -2099,7 +2085,7 @@ static int bm_save_pcx(Bitmap *b, const char *fname) {
             Sample random pixels and generate a palette from them.
             A better solution would be to use some clustering, but
             I don't have the stomach for that now. */
-        int palette[256], q;
+        unsigned int palette[256], q;
         ncolors = 0;
         for(ncolors = 0; ncolors < 256; ncolors++) {
             unsigned int c = bm_get(b, rand()%b->w, rand()%b->h);
@@ -2172,8 +2158,6 @@ Bitmap *bm_copy(Bitmap *b) {
 void bm_free(Bitmap *b) {
     if(!b) return;
     if(b->data) free(b->data);
-    if(b->font && b->font->dtor)
-        b->font->dtor(b->font);
     free(b);
 }
 
@@ -2191,9 +2175,7 @@ Bitmap *bm_bind(int w, int h, unsigned char *data) {
     b->data = data;
 
     b->font = NULL;
-#ifndef NO_FONTS
-    bm_std_font(b, BM_FONT_NORMAL);
-#endif
+    bm_reset_font(b);
 
     bm_set_color(b, 0xFFFFFFFF);
 
@@ -2206,8 +2188,6 @@ void bm_rebind(Bitmap *b, unsigned char *data) {
 
 void bm_unbind(Bitmap *b) {
     if(!b) return;
-    if(b->font && b->font->dtor)
-        b->font->dtor(b->font);
     free(b);
 }
 
@@ -3246,17 +3226,17 @@ void bm_get_rgb(unsigned int col, unsigned char *R, unsigned char *G, unsigned c
 unsigned int bm_hsl(double H, double S, double L) {
     /* The formula is based on the one on the wikipedia:
      * https://en.wikipedia.org/wiki/HSL_and_HSV#Converting_to_RGB
-     * If you look at the examples, (https://en.wikipedia.org/wiki/HSL_and_HSV#Examples),
-     * there seems to be a small rounding error
      */
     double R = 0, G = 0, B = 0;
     double C, X, m;
 
     if(H > 0)
         H = fmod(H, 360.0);
-    if(S < 0 || S > 100.0) return 0;
+    if(S < 0) S = 0;
+    if(S > 100.0) S = 100.0;
     S /= 100.0;
-    if(L < 0 || L > 100.0) return 0;
+    if(L < 0) L = 0;
+    if(L > 100.0) L = 100;
     L /= 100.0;
 
     C = (1.0 - fabs(2.0 * L - 1.0)) * S;
@@ -3342,21 +3322,7 @@ unsigned int bm_picker(Bitmap *bm, int x, int y) {
     return bm->color;
 }
 
-/* Squared distance between colors; so you don't need to get the root if you're
-    only interested in comparing distances. */
-static int col_dist_sq(int color1, int color2) {
-    int r1, g1, b1;
-    int r2, g2, b2;
-    int dr, dg, db;
-    r1 = (color1 >> 16) & 0xFF; g1 = (color1 >> 8) & 0xFF; b1 = (color1 >> 0) & 0xFF;
-    r2 = (color2 >> 16) & 0xFF; g2 = (color2 >> 8) & 0xFF; b2 = (color2 >> 0) & 0xFF;
-    dr = r1 - r2;
-    dg = g1 - g2;
-    db = b1 - b2;
-    return dr * dr + dg * dg + db * db;
-}
-
-int bm_lerp(int color1, int color2, double t) {
+unsigned int bm_lerp(unsigned int color1, unsigned int color2, double t) {
     int r1, g1, b1;
     int r2, g2, b2;
     int r3, g3, b3;
@@ -3806,10 +3772,25 @@ void bm_fill(Bitmap *b, int x, int y) {
     b->color = dc;
 }
 
-static int closest_color(int c, int palette[], size_t n) {
-    int i, m = 0, md = col_dist_sq(c, palette[m]);
+/* Squared distance between colors; so you don't need to get the root if you're
+    only interested in comparing distances. */
+static unsigned int col_dist_sq(unsigned int color1, unsigned int color2) {
+    unsigned int r1, g1, b1;
+    unsigned int r2, g2, b2;
+    unsigned int dr, dg, db;
+    r1 = (color1 >> 16) & 0xFF; g1 = (color1 >> 8) & 0xFF; b1 = (color1 >> 0) & 0xFF;
+    r2 = (color2 >> 16) & 0xFF; g2 = (color2 >> 8) & 0xFF; b2 = (color2 >> 0) & 0xFF;
+    dr = r1 - r2;
+    dg = g1 - g2;
+    db = b1 - b2;
+    return dr * dr + dg * dg + db * db;
+}
+
+static unsigned int closest_color(unsigned int c, unsigned int palette[], size_t n) {
+    int i, m = 0;
+	unsigned int md = col_dist_sq(c, palette[m]);
     for(i = 1; i < n; i++) {
-        int d = col_dist_sq(c, palette[i]);
+        unsigned int d = col_dist_sq(c, palette[i]);
         if(d < md) {
             md = d;
             m = i;
@@ -3838,7 +3819,7 @@ static void fs_add_factor(Bitmap *b, int x, int y, int er, int eg, int eb, int f
     BM_SET_RGBA(b, x, y, R, G, B, 0);
 }
 
-void bm_reduce_palette(Bitmap *b, int palette[], size_t n) {
+void bm_reduce_palette(Bitmap *b, unsigned int palette[], size_t n) {
     /* Floyd-Steinberg (error-diffusion) dithering
         http://en.wikipedia.org/wiki/Floyd%E2%80%93Steinberg_dithering */
     int x, y;
@@ -3846,10 +3827,10 @@ void bm_reduce_palette(Bitmap *b, int palette[], size_t n) {
         return;
     for(y = 0; y < b->h; y++) {
         for(x = 0; x < b->w; x++) {
-            int r1, g1, b1;
-            int r2, g2, b2;
-            int er, eg, eb;
-            int newpixel, oldpixel = BM_GET(b, x, y);
+            unsigned int r1, g1, b1;
+            unsigned int r2, g2, b2;
+            unsigned int er, eg, eb;
+            unsigned int newpixel, oldpixel = BM_GET(b, x, y);
 
             newpixel = closest_color(oldpixel, palette, n);
 
@@ -3883,7 +3864,7 @@ static int bayer8x8[64] = { /*(1/65)*/
     11, 59,  7, 55, 10, 58,  6, 54,
     43, 27, 39, 23, 42, 26, 38, 22,
 };
-static void reduce_palette_bayer(Bitmap *b, int palette[], size_t n, int bayer[], int dim, int fac) {
+static void reduce_palette_bayer(Bitmap *b, unsigned int palette[], size_t n, int bayer[], int dim, int fac) {
     /* Ordered dithering: https://en.wikipedia.org/wiki/Ordered_dithering
     The resulting image may be of lower quality than you would get with
     Floyd-Steinberg, but it does have some advantages:
@@ -3899,8 +3880,8 @@ static void reduce_palette_bayer(Bitmap *b, int palette[], size_t n, int bayer[]
         return;
     for(y = 0; y < b->h; y++) {
         for(x = 0; x < b->w; x++) {
-            int R, G, B;
-            int newpixel, oldpixel = BM_GET(b, x, y);
+            unsigned int R, G, B;
+            unsigned int newpixel, oldpixel = BM_GET(b, x, y);
 
             R = (oldpixel >> 16) & 0xFF; G = (oldpixel >> 8) & 0xFF; B = (oldpixel >> 0) & 0xFF;
 
@@ -3923,20 +3904,87 @@ static void reduce_palette_bayer(Bitmap *b, int palette[], size_t n, int bayer[]
     }
 }
 
-void bm_reduce_palette_OD4(Bitmap *b, int palette[], size_t n) {
+void bm_reduce_palette_OD4(Bitmap *b, unsigned int palette[], size_t n) {
     reduce_palette_bayer(b, palette, n, bayer4x4, 4, 17);
 }
 
-void bm_reduce_palette_OD8(Bitmap *b, int palette[], size_t n) {
+void bm_reduce_palette_OD8(Bitmap *b, unsigned int palette[], size_t n) {
     reduce_palette_bayer(b, palette, n, bayer8x8, 8, 65);
 }
 
-/** FONT FUNCTIONS **********************************************************/
+/* --- normal.xbm ------------------------------------------------------------ */
+#define normal_width 96
+#define normal_height 64
+static unsigned char normal_bits[] = {
+   0xff, 0xef, 0xe3, 0xe3, 0xe3, 0xdd, 0xe1, 0xdd, 0xf7, 0xfd, 0xff, 0xff,
+   0xff, 0xf7, 0xdd, 0xdd, 0xdd, 0xdd, 0xdd, 0xdd, 0xe7, 0xfd, 0xff, 0xff,
+   0xff, 0xfb, 0xcd, 0xdd, 0xc5, 0xdd, 0xdd, 0xeb, 0xef, 0xfd, 0xe1, 0xdd,
+   0xff, 0xfb, 0xd5, 0xe3, 0xd5, 0xc1, 0xe1, 0xf7, 0xff, 0xe1, 0xdd, 0xeb,
+   0xff, 0xfb, 0xd9, 0xdd, 0xe5, 0xdd, 0xfd, 0xeb, 0xff, 0xdd, 0xdd, 0xf7,
+   0xff, 0xf7, 0xdd, 0xdd, 0xfd, 0xdd, 0xfd, 0xdd, 0xff, 0xdd, 0xe1, 0xeb,
+   0xff, 0xef, 0xe3, 0xe3, 0xe3, 0xdd, 0xfd, 0xdd, 0xff, 0xdd, 0xfd, 0xdd,
+   0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff,
+   0xf7, 0xfb, 0xf7, 0xe3, 0xf7, 0xe3, 0xe3, 0xdd, 0xff, 0xf7, 0xff, 0xff,
+   0xf7, 0xf7, 0xf3, 0xdd, 0xeb, 0xf7, 0xdd, 0xdd, 0xff, 0xff, 0xff, 0xff,
+   0xf7, 0xef, 0xf7, 0xdd, 0xdd, 0xf7, 0xdd, 0xeb, 0xe3, 0xf3, 0xc3, 0xdd,
+   0xf7, 0xef, 0xf7, 0xc3, 0xdd, 0xf7, 0xdd, 0xf7, 0xdf, 0xf7, 0xdd, 0xdd,
+   0xff, 0xef, 0xf7, 0xdf, 0xc1, 0xf7, 0xd5, 0xf7, 0xc3, 0xf7, 0xdd, 0xdd,
+   0xff, 0xf7, 0xf7, 0xdd, 0xdd, 0xf7, 0xed, 0xf7, 0xdd, 0xf7, 0xc3, 0xc3,
+   0xf7, 0xfb, 0xe3, 0xe3, 0xdd, 0xe3, 0xd3, 0xf7, 0xc3, 0xe3, 0xdf, 0xdf,
+   0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xdf, 0xe3,
+   0xeb, 0xf7, 0xe3, 0xff, 0xe1, 0xcf, 0xe1, 0xc1, 0xfd, 0xef, 0xff, 0xff,
+   0xeb, 0xd5, 0xdd, 0xff, 0xdd, 0xdf, 0xdd, 0xdf, 0xfd, 0xff, 0xff, 0xff,
+   0xff, 0xe3, 0xdf, 0xef, 0xdd, 0xdf, 0xdd, 0xef, 0xe1, 0xe7, 0xe5, 0xc1,
+   0xff, 0xf7, 0xe7, 0xff, 0xe1, 0xdf, 0xe1, 0xf7, 0xdd, 0xef, 0xd9, 0xef,
+   0xff, 0xe3, 0xfb, 0xff, 0xdd, 0xdf, 0xdd, 0xfb, 0xdd, 0xef, 0xfd, 0xf7,
+   0xff, 0xd5, 0xfd, 0xff, 0xdd, 0xdd, 0xdd, 0xfd, 0xdd, 0xef, 0xfd, 0xfb,
+   0xff, 0xf7, 0xc1, 0xef, 0xe1, 0xe3, 0xdd, 0xc1, 0xe1, 0xed, 0xfd, 0xc1,
+   0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xf3, 0xff, 0xff,
+   0xff, 0xff, 0xc1, 0xff, 0xe3, 0xdd, 0xe3, 0xe3, 0xff, 0xfd, 0xff, 0xcf,
+   0xeb, 0xf7, 0xdf, 0xff, 0xdd, 0xdd, 0xdd, 0xfb, 0xff, 0xfd, 0xff, 0xf7,
+   0xc1, 0xf7, 0xef, 0xef, 0xfd, 0xed, 0xfd, 0xfb, 0xc3, 0xed, 0xe3, 0xf7,
+   0xeb, 0xc1, 0xe7, 0xff, 0xfd, 0xf1, 0xe3, 0xfb, 0xfd, 0xf5, 0xfd, 0xf9,
+   0xc1, 0xf7, 0xdf, 0xff, 0xfd, 0xed, 0xdf, 0xfb, 0xfd, 0xf9, 0xf3, 0xf7,
+   0xeb, 0xf7, 0xdd, 0xef, 0xdd, 0xdd, 0xdd, 0xfb, 0xfd, 0xf5, 0xef, 0xf7,
+   0xff, 0xff, 0xe3, 0xef, 0xe3, 0xdd, 0xe3, 0xe3, 0xc3, 0xed, 0xf1, 0xcf,
+   0xff, 0xff, 0xff, 0xf7, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+   0xf7, 0xff, 0xef, 0xff, 0xe1, 0xfd, 0xc1, 0xff, 0xdf, 0xf3, 0xff, 0xf7,
+   0xc3, 0xff, 0xe7, 0xef, 0xdd, 0xfd, 0xf7, 0xfd, 0xdf, 0xf7, 0xfb, 0xf7,
+   0xf5, 0xff, 0xeb, 0xf7, 0xdd, 0xfd, 0xf7, 0xfb, 0xc3, 0xf7, 0xe1, 0xf7,
+   0xe3, 0xff, 0xed, 0xfb, 0xdd, 0xfd, 0xf7, 0xf7, 0xdd, 0xf7, 0xfb, 0xff,
+   0xd7, 0xff, 0xc1, 0xf7, 0xdd, 0xfd, 0xf7, 0xef, 0xdd, 0xf7, 0xfb, 0xf7,
+   0xe1, 0xef, 0xef, 0xef, 0xdd, 0xfd, 0xf7, 0xdf, 0xdd, 0xf7, 0xdb, 0xf7,
+   0xf7, 0xef, 0xef, 0xff, 0xe1, 0xc1, 0xf7, 0xff, 0xc3, 0xe3, 0xe7, 0xf7,
+   0xff, 0xf7, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+   0xff, 0xff, 0xc1, 0xff, 0xc1, 0xdd, 0xdd, 0xe3, 0xff, 0xff, 0xff, 0xf9,
+   0xd9, 0xff, 0xfd, 0xff, 0xfd, 0xc9, 0xdd, 0xef, 0xff, 0xff, 0xff, 0xf7,
+   0xe9, 0xff, 0xe1, 0xe3, 0xfd, 0xd5, 0xdd, 0xef, 0xe3, 0xe9, 0xdd, 0xf7,
+   0xf7, 0xc3, 0xdf, 0xff, 0xe1, 0xdd, 0xdd, 0xef, 0xdd, 0xd5, 0xdd, 0xcf,
+   0xcb, 0xff, 0xdf, 0xe3, 0xfd, 0xdd, 0xdd, 0xef, 0xc1, 0xdd, 0xdd, 0xf7,
+   0xcd, 0xff, 0xdd, 0xff, 0xfd, 0xdd, 0xdd, 0xef, 0xfd, 0xdd, 0xcd, 0xf7,
+   0xff, 0xff, 0xe3, 0xff, 0xc1, 0xdd, 0xc3, 0xe3, 0xc3, 0xdd, 0xd3, 0xf9,
+   0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+   0xfb, 0xff, 0xe3, 0xff, 0xc1, 0xdd, 0xdd, 0xf7, 0xe7, 0xff, 0xff, 0xff,
+   0xf5, 0xff, 0xdd, 0xfb, 0xfd, 0xdd, 0xdd, 0xeb, 0xdb, 0xff, 0xff, 0xd3,
+   0xf5, 0xff, 0xfd, 0xf7, 0xfd, 0xd9, 0xdd, 0xdd, 0xfb, 0xe5, 0xdd, 0xe5,
+   0xfb, 0xff, 0xe1, 0xef, 0xe1, 0xd5, 0xdd, 0xff, 0xf1, 0xd9, 0xdd, 0xff,
+   0xd5, 0xff, 0xdd, 0xf7, 0xfd, 0xcd, 0xdd, 0xff, 0xfb, 0xdd, 0xdd, 0xff,
+   0xed, 0xff, 0xdd, 0xfb, 0xfd, 0xdd, 0xeb, 0xff, 0xfb, 0xdd, 0xeb, 0xff,
+   0xd3, 0xef, 0xe3, 0xff, 0xfd, 0xdd, 0xf7, 0xff, 0xfb, 0xdd, 0xf7, 0xff,
+   0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+   0xf7, 0xff, 0xc1, 0xe3, 0xe3, 0xe3, 0xdd, 0xff, 0xff, 0xff, 0xff, 0xff,
+   0xf7, 0xdf, 0xdf, 0xdd, 0xdd, 0xdd, 0xdd, 0xff, 0xff, 0xff, 0xff, 0xff,
+   0xff, 0xef, 0xef, 0xdf, 0xfd, 0xdd, 0xdd, 0xff, 0xe3, 0xe3, 0xdd, 0xff,
+   0xff, 0xf7, 0xf7, 0xe7, 0xc5, 0xdd, 0xdd, 0xff, 0xdd, 0xdd, 0xdd, 0xff,
+   0xff, 0xfb, 0xfb, 0xf7, 0xdd, 0xdd, 0xd5, 0xff, 0xdd, 0xdd, 0xdd, 0xff,
+   0xff, 0xfd, 0xfb, 0xff, 0xdd, 0xdd, 0xc9, 0xff, 0xc3, 0xdd, 0xd5, 0xff,
+   0xff, 0xff, 0xfb, 0xf7, 0xe3, 0xe3, 0xdd, 0xc1, 0xdf, 0xe3, 0xeb, 0xff,
+   0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xe3, 0xff, 0xff, 0xff };
+/* --------------------------------------------------------------------------- */
 
 void bm_set_font(Bitmap *b, BmFont *font) {
-    if(b->font && b->font->dtor)
-        b->font->dtor(b->font);
-    b->font = font;
+    if(b->font != font)
+        b->font = font;
 }
 
 int bm_text_width(Bitmap *b, const char *s) {
@@ -4005,24 +4053,24 @@ typedef struct {
     int spacing;
 } XbmFontInfo;
 
-static void xbmf_putc(Bitmap *b, XbmFontInfo *info, int x, int y, char c) {
+static void xbmf_putc(Bitmap *b, const unsigned char *xbm_bits, int x, int y, unsigned int col, char c) {
     int frow, fcol, byte;
-    unsigned int col;
     int i, j;
-    if(!info || !info->bits || c < 32 || c > 127) return;
+    
+    if(c < 32 || c > 127)
+        return;
+    
     c -= 32;
     fcol = c >> 3;
     frow = c & 0x7;
     byte = frow * FONT_WIDTH + fcol;
-
-    col = bm_get_color(b);
-
+    
     for(j = 0; j < 8 && y + j < b->clip.y1; j++) {
         if(y + j >= b->clip.y0) {
-            char bits = info->bits[byte];
+            char bits = xbm_bits[byte];
             for(i = 0; i < 8 && x + i < b->clip.x1; i++) {
                 if(x + i >= b->clip.x0 && !(bits & (1 << i))) {
-                    bm_set(b, x + i, y + j, col);
+                    BM_SET(b, x + i, y + j, col);
                 }
             }
         }
@@ -4032,9 +4080,21 @@ static void xbmf_putc(Bitmap *b, XbmFontInfo *info, int x, int y, char c) {
 
 static int xbmf_puts(Bitmap *b, int x, int y, const char *text) {
     XbmFontInfo *info;
-    int xs = x;
+    int xs = x, spacing;
+    const unsigned char *bits;
+    unsigned int col = bm_get_color(b);
+    
     if(!b->font) return 0;
+        
     info = b->font->data;
+    if(info) {
+        spacing = info->spacing;
+        bits = info->bits;
+    } else {
+        spacing = 6;
+        bits = normal_bits;
+    }
+    
     while(text[0]) {
         if(text[0] == '\n') {
             y += 8;
@@ -4044,13 +4104,13 @@ static int xbmf_puts(Bitmap *b, int x, int y, const char *text) {
              * but it doesn't really make sense because
              * this isn't exactly a character based terminal.
              */
-            x += 4 * info->spacing;
+            x += 4 * spacing;
         } else if(text[0] == '\r') {
             /* why would anyone find this useful? */
             x = xs;
         } else {
-            xbmf_putc(b, info, x, y, text[0]);
-            x += info->spacing;
+            xbmf_putc(b, bits, x, y, col, text[0]);
+            x += spacing;
         }
         text++;
         if(y > b->h) {
@@ -4061,17 +4121,19 @@ static int xbmf_puts(Bitmap *b, int x, int y, const char *text) {
     }
     return 1;
 }
-static void xbmf_dtor(struct bitmap_font *font) {
+
+static int xbmf_width(BmFont *font) {
     XbmFontInfo *info = font->data;
-    free(info);
-    free(font);
-}
-static int xbmf_width(struct bitmap_font *font) {
-    XbmFontInfo *info = font->data;
+    if(!info) return 6;
     return info->spacing;
 }
-static int xbmf_height(struct bitmap_font *font) {
+static int xbmf_height(BmFont *font) {
     return 8;
+}
+
+void bm_reset_font(Bitmap *b) {
+    static BmFont font = {"XBM",xbmf_puts,xbmf_width,xbmf_height,NULL};
+    bm_set_font(b, &font);
 }
 
 BmFont *bm_make_xbm_font(const unsigned char *bits, int spacing) {
@@ -4091,63 +4153,16 @@ BmFont *bm_make_xbm_font(const unsigned char *bits, int spacing) {
 
     font->type = "XBM";
     font->puts = xbmf_puts;
-    font->dtor = xbmf_dtor;
     font->width = xbmf_width;
     font->height = xbmf_height;
     font->data = info;
 
     return font;
 }
-
-#ifndef NO_FONTS
-
-static struct xbm_font_info {
-    const char *s;
-    int i;
-    const unsigned char *bits;
-    int spacing;
-} xbm_font_infos[] = {
-    {"NORMAL", BM_FONT_NORMAL, normal_bits, 6},
-    {"BOLD", BM_FONT_BOLD, bold_bits, 8},
-    {"CIRCUIT", BM_FONT_CIRCUIT, circuit_bits, 7},
-    {"HAND", BM_FONT_HAND, hand_bits, 7},
-    {"SMALL", BM_FONT_SMALL, small_bits, 5},
-    {"SMALL_I", BM_FONT_SMALL_I, smallinv_bits, 7},
-    {"THICK", BM_FONT_THICK, thick_bits, 6},
-    {NULL, 0}
-};
-
-void bm_std_font(Bitmap *b, enum bm_fonts font) {
-    struct xbm_font_info *info = &xbm_font_infos[font];
-    BmFont * bfont = bm_make_xbm_font(info->bits, info->spacing);
-    bm_set_font(b, bfont);
+void bm_free_xbm_font(BmFont *font) {
+    XbmFontInfo *info = font->data;
+    assert(!strcmp(font->type, "XBM"));
+    free(info);
+    free(font);
 }
 
-int bm_font_index(const char *name) {
-    int i = 0;
-    char buffer[12], *c = buffer;
-    do {
-        *c++ = toupper(*name++);
-    } while(*name && c - buffer < sizeof buffer - 1);
-    *c = '\0';
-
-    while(xbm_font_infos[i].s) {
-        if(!strcmp(xbm_font_infos[i].s, buffer)) {
-            return xbm_font_infos[i].i;
-        }
-        i++;
-    }
-    return BM_FONT_NORMAL;
-}
-
-const char *bm_font_name(int index) {
-    int i = 0;
-    while(xbm_font_infos[i].s) {
-        i++;
-        if(xbm_font_infos[i].i == index) {
-            return xbm_font_infos[i].s;
-        }
-    }
-    return xbm_font_infos[0].s;
-}
-#endif /* NO_FONTS */
