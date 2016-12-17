@@ -1,7 +1,7 @@
 #! /usr/bin/awk -f
 #
-# Purpose: Either converts markdown in code comments
-# to HTML, or is a poem about Hastur. I forget.
+# Converts Markdown in code comments to HTML.
+# https://github.com/wernsey/d.awk
 #
 # The comments must have the /** */ pattern. Every line in the comment
 # must start with a *. Like so:
