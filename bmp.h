@@ -658,6 +658,7 @@ void bm_free_xbm_font(BmFont *font);
  *      operations to apply a `& 0x00FFFFFF` so that alpha values are ignored.  \
  *      It is not properly tested because I don't have any serious projects that
  *      depends on the alpha values at the moment.
+ * - [] `bm_fill()` should _perhaps_ stop using `bm_picker()`
  */
 
 #endif /* BMP_H */

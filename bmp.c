@@ -2143,12 +2143,7 @@ Bitmap *bm_copy(Bitmap *b) {
     memcpy(out->data, b->data, BM_BLOB_SIZE(b));
 
     out->color = b->color;
-
-    /* Caveat: The input bitmap is technically the owner
-    of its own font, so we can't just copy the pointer
-    */
-    /* out->font = b->font */
-    out->font = NULL;
+    out->font = b->font;
 
     memcpy(&out->clip, &b->clip, sizeof b->clip);
 
@@ -3165,6 +3160,16 @@ unsigned int bm_atoi(const char *text) {
         text += 2;
     }
 
+    if(tolower(text[0]) == 'g' && tolower(text[1]) == 'r'
+        && (tolower(text[2]) == 'a' || tolower(text[2]) == 'e') && tolower(text[3]) == 'y'
+        && isdigit(text[4])) {
+        /* Color specified like "Gray50", see
+            https://en.wikipedia.org/wiki/X11_color_names#Shades_of_gray
+            I don't intend to support the other X11 variations. */
+        col = atoi(text+4) * 255 / 100;
+        return col | (col << 8) | (col << 16);
+    }
+
     if(strlen(text) == 8) {
         /* CSS specifies colors as #RRGGBBAA, but I store it internally as ARGB (or ABGR) */
         while(isxdigit(text[0])) {
@@ -3724,7 +3729,7 @@ void bm_fill(Bitmap *b, int x, int y) {
         w = n;
         e = n;
 
-        if(!bm_picker(b, n.x, n.y) == sc)
+        if(bm_picker(b, n.x, n.y) != sc)
             continue;
 
         while(w.x > b->clip.x0) {
@@ -4056,15 +4061,15 @@ typedef struct {
 static void xbmf_putc(Bitmap *b, const unsigned char *xbm_bits, int x, int y, unsigned int col, char c) {
     int frow, fcol, byte;
     int i, j;
-    
+
     if(c < 32 || c > 127)
         return;
-    
+
     c -= 32;
     fcol = c >> 3;
     frow = c & 0x7;
     byte = frow * FONT_WIDTH + fcol;
-    
+
     for(j = 0; j < 8 && y + j < b->clip.y1; j++) {
         if(y + j >= b->clip.y0) {
             char bits = xbm_bits[byte];
@@ -4083,9 +4088,9 @@ static int xbmf_puts(Bitmap *b, int x, int y, const char *text) {
     int xs = x, spacing;
     const unsigned char *bits;
     unsigned int col = bm_get_color(b);
-    
+
     if(!b->font) return 0;
-        
+
     info = b->font->data;
     if(info) {
         spacing = info->spacing;
@@ -4094,7 +4099,7 @@ static int xbmf_puts(Bitmap *b, int x, int y, const char *text) {
         spacing = 6;
         bits = normal_bits;
     }
-    
+
     while(text[0]) {
         if(text[0] == '\n') {
             y += 8;
