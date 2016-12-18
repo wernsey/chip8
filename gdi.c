@@ -11,10 +11,15 @@ http://forums.codeguru.com/showthread.php?487633-32-bit-DIB-from-24-bit-bitmap
 #include <stdlib.h>
 #include <ctype.h>
 #include <time.h>
+#include <assert.h>
 #include <windows.h>
 
 #include "bmp.h"
 #include "gdi.h"
+
+/* fflush() the log file after each call to rlog()?
+I only use it for those hard to debug crashes */
+#define FLUSH 0
 
 static char szAppName[] = APPNAME;
 static char szTitle[]   = APPNAME;
@@ -25,6 +30,9 @@ Bitmap *screen = NULL;
 https://msdn.microsoft.com/en-us/library/windows/desktop/dd375731(v=vs.85).aspx */
 #define MAX_KEYS 256
 char keys[MAX_KEYS];
+static int pressed_key = 0;
+
+static int mouse_x, mouse_y, click = 0;
 
 static int quit;
 
@@ -39,24 +47,43 @@ void clear_keys() {
     }
 }
 
+int key_pressed() {
+    return pressed_key;
+}
+
+int mouse_clicked() {
+    return click;
+}
+
+void mouse_pos(int *xp, int *yp) {
+    assert(xp != NULL);
+    assert(yp != NULL);
+    *xp = mouse_x / (WINDOW_WIDTH / SCREEN_WIDTH);
+    *yp = mouse_y / (WINDOW_HEIGHT / SCREEN_HEIGHT);
+}
+
 static FILE *logfile = NULL;
 
 void rlog(const char *fmt, ...) {
-	va_list arg;	
-	va_start(arg, fmt);
-	fputs("INFO: ", logfile);
-	vfprintf(logfile, fmt, arg);
-	fputc('\n', logfile);
-	va_end(arg);
+    va_list arg;
+    va_start(arg, fmt);
+    fputs("INFO: ", logfile);
+    vfprintf(logfile, fmt, arg);
+    fputc('\n', logfile);
+    va_end(arg);
+#if FLUSH
+    fflush(logfile);
+#endif
 }
 
 void rerror(const char *fmt, ...) {
-	va_list arg;	
-	va_start(arg, fmt);
-	fputs("ERROR: ", logfile);
-	vfprintf(logfile, fmt, arg);
-	fputc('\n', logfile);
-	va_end(arg);
+    va_list arg;
+    va_start(arg, fmt);
+    fputs("ERROR: ", logfile);
+    vfprintf(logfile, fmt, arg);
+    fputc('\n', logfile);
+    va_end(arg);
+    fflush(logfile);
 }
 
 void exit_error(const char *msg, ...) {
@@ -66,9 +93,9 @@ void exit_error(const char *msg, ...) {
         va_start (arg, msg);
         vsnprintf (message_text, (sizeof message_text) - 1, msg, arg);
         va_end (arg);
-		fputc('\n', logfile);
+        fputc('\n', logfile);
     }
-	fputs(message_text, logfile);
+    fputs(message_text, logfile);
     MessageBox(
         NULL,
         message_text,
@@ -89,7 +116,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     static HBITMAP hbmOld, hbmp;
 
 #if EPX_SCALE
-	static Bitmap *epx = NULL;
+    static Bitmap *epx = NULL;
 #endif
 
 #define MAX_ARGS    16
@@ -129,7 +156,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 #if !EPX_SCALE
             screen = bm_bind(VSCREEN_WIDTH, VSCREEN_HEIGHT, pixels);
 #else
-			screen = bm_create(SCREEN_WIDTH, SCREEN_HEIGHT);
+            screen = bm_create(SCREEN_WIDTH, SCREEN_HEIGHT);
             epx = bm_bind(VSCREEN_WIDTH, VSCREEN_HEIGHT, pixels);
 #endif
             bm_set_color(screen, bm_atoi("black"));
@@ -152,9 +179,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 #if !EPX_SCALE
             bm_unbind(screen);
-#else		
-			bm_free(screen);
-			bm_unbind(epx);
+#else
+            bm_free(screen);
+            bm_unbind(epx);
 #endif
             SelectObject( hdcMem, hbmOld );
             DeleteDC( hdc );
@@ -168,9 +195,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 #endif
             break;
 
+        /* If you want text input, WM_CHAR is what you're looking for */
+        case WM_CHAR:
+            if (wParam < 128) {
+                pressed_key = wParam;
+            }
+            break;
         case WM_KEYDOWN:
+
+            //rlog("WM_KEYDOWN 0x%02X", wParam);
+
             if (wParam < MAX_KEYS) {
                 keys[wParam] = 1;
+                pressed_key = wParam | 0xFFFF0000;
             }
 #if 1
             if (VK_ESCAPE == wParam)
@@ -184,16 +221,28 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             }
             break;
 
+        case WM_LBUTTONDOWN:
+        case WM_LBUTTONDBLCLK: /* ...all clicks treated equally */
+        {
+            mouse_x = LOWORD(lParam);
+            mouse_y = HIWORD(lParam);
+            click = 1;
+        } break;
+        case WM_MOUSEMOVE:
+        {
+            mouse_x = LOWORD(lParam);
+            mouse_y = HIWORD(lParam);
+        } break;
         case WM_PAINT:
         {
             if(!screen) break;
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint( hwnd, &ps );
-			
+
 #if EPX_SCALE
-			scale_epx_i(screen, epx);
+            scale_epx_i(screen, epx);
 #endif
-			
+
 #if WINDOW_WIDTH == VSCREEN_WIDTH && WINDOW_HEIGHT == VSCREEN_HEIGHT
             BitBlt( hdc, 0, 0, VSCREEN_WIDTH, VSCREEN_HEIGHT, hdcMem, 0, 0, SRCCOPY );
 #else
@@ -224,8 +273,8 @@ int APIENTRY WinMain(
     WNDCLASS wc;
     HWND hwnd;
     double elapsedSeconds = 0.0;
-	
-	logfile = fopen("gdifw.log", "w");
+
+    logfile = fopen("gdifw.log", "w");
 
     rlog("%s","GDI Framework: Application Running");
 
@@ -244,8 +293,9 @@ int APIENTRY WinMain(
     hwnd = CreateWindow(
         szAppName,
         szTitle,
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        //WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         //WS_POPUP, // For no border/titlebar etc
+        WS_CAPTION,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
         WINDOW_WIDTH,
@@ -280,16 +330,36 @@ int APIENTRY WinMain(
         endTime = clock();
         elapsedSeconds += (double)(endTime - startTime) / CLOCKS_PER_SEC;
         if(elapsedSeconds > 1.0/FPS) {
+
             if(!render(elapsedSeconds)) {
                 DestroyWindow(hwnd);
             }
+
+            /*****************************/
+#if 0
+            bm_set_color(screen, 0);
+            bm_clear(screen);
+            bm_set_color(screen, 0xFFFFFF);
+            if(pressed_key) {
+                if(isprint(pressed_key))
+                    bm_printf(screen, 10, 10, "%d '%c'", pressed_key, pressed_key);
+                else
+                    bm_printf(screen, 10, 10, "%d", pressed_key);
+            }
+            if(click)
+                bm_printf(screen, 10, 18, "%d,%d", mouse_x, mouse_y);
+#endif
+            /*****************************/
+
             InvalidateRect(hwnd, 0, TRUE);
             elapsedSeconds = 0.0;
+            pressed_key = 0;
+            click = 0;
         }
     }
     rlog("%s","GDI Framework: Main loop stopped");
-	rlog("%s","Application Done!\n");
-	fclose(logfile);
+    rlog("%s","Application Done!\n");
+    fclose(logfile);
 
     return msg.wParam;
 }
@@ -391,32 +461,59 @@ static int split_cmd_line(char *cmdl, char *argv[], int max) {
 /* EPX 2x scaling */
 #if EPX_SCALE
 static Bitmap *scale_epx_i(Bitmap *in, Bitmap *out) {
-	int x, y, mx = in->w, my = in->h;
-	if(!out) return NULL;
-	if(!in) return out;
-	if(out->w < (mx << 1)) mx = (out->w - 1) >> 1;
-	if(out->h < (my << 1)) my = (out->h - 1) >> 1;
-	for(y = 0; y < my; y++) {
-		for(x = 0; x < mx; x++) {
-			unsigned int P = bm_get(in, x, y);
-			unsigned int A = (y > 0) ? bm_get(in, x, y - 1) : P;
-			unsigned int B = (x < in->w - 1) ? bm_get(in, x + 1, y) : P;
-			unsigned int C = (x > 0) ? bm_get(in, x - 1, y) : P;
-			unsigned int D = (y < in->h - 1) ? bm_get(in, x, y + 1) : P;
-			
-			unsigned int P1 = P, P2 = P, P3 = P, P4 = P;
-								
-			if(C == A && C != D && A != B) P1 = A;
-			if(A == B && A != C && B != D) P2 = B;
-			if(B == D && B != A && D != C) P4 = D;
-			if(D == C && D != B && C != A) P3 = C;
-						
-			bm_set(out, (x << 1), (y << 1), P1);
-			bm_set(out, (x << 1) + 1, (y << 1), P2);
-			bm_set(out, (x << 1), (y << 1) + 1, P3);
-			bm_set(out, (x << 1) + 1, (y << 1) + 1, P4);
-		}
-	}
-	return out;
+    int x, y, mx = in->w, my = in->h;
+    if(!out) return NULL;
+    if(!in) return out;
+    if(out->w < (mx << 1)) mx = (out->w - 1) >> 1;
+    if(out->h < (my << 1)) my = (out->h - 1) >> 1;
+    for(y = 0; y < my; y++) {
+        for(x = 0; x < mx; x++) {
+            unsigned int P = bm_get(in, x, y);
+            unsigned int A = (y > 0) ? bm_get(in, x, y - 1) : P;
+            unsigned int B = (x < in->w - 1) ? bm_get(in, x + 1, y) : P;
+            unsigned int C = (x > 0) ? bm_get(in, x - 1, y) : P;
+            unsigned int D = (y < in->h - 1) ? bm_get(in, x, y + 1) : P;
+
+            unsigned int P1 = P, P2 = P, P3 = P, P4 = P;
+
+            if(C == A && C != D && A != B) P1 = A;
+            if(A == B && A != C && B != D) P2 = B;
+            if(B == D && B != A && D != C) P4 = D;
+            if(D == C && D != B && C != A) P3 = C;
+
+            bm_set(out, (x << 1), (y << 1), P1);
+            bm_set(out, (x << 1) + 1, (y << 1), P2);
+            bm_set(out, (x << 1), (y << 1) + 1, P3);
+            bm_set(out, (x << 1) + 1, (y << 1) + 1, P4);
+        }
+    }
+    return out;
 }
 #endif
+
+char *readfile(const char *fname) {
+    FILE *f;
+    size_t len, r;
+    char *bytes;
+
+    if(!(f = fopen(fname, "rb")))
+        return NULL;
+
+    fseek(f, 0, SEEK_END);
+    len = ftell(f);
+    rewind(f);
+
+    if(!(bytes = malloc(len+2)))
+        return NULL;
+    r = fread(bytes, 1, len, f);
+
+    if(r != len) {
+        free(bytes);
+        return NULL;
+    }
+
+    fclose(f);
+    bytes[len] = '\0';
+
+    return bytes;
+}
