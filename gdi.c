@@ -12,17 +12,24 @@ http://forums.codeguru.com/showthread.php?487633-32-bit-DIB-from-24-bit-bitmap
 #include <ctype.h>
 #include <time.h>
 #include <assert.h>
+
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 #include "bmp.h"
 #include "gdi.h"
 
+#define VSCREEN_WIDTH    (SCREEN_WIDTH * (EPX_SCALE?2:1))
+#define VSCREEN_HEIGHT   (SCREEN_HEIGHT * (EPX_SCALE?2:1))
+#define WINDOW_WIDTH 	(VSCREEN_WIDTH * SCREEN_SCALE)
+#define WINDOW_HEIGHT 	(VSCREEN_HEIGHT * SCREEN_SCALE)
+
 /* fflush() the log file after each call to rlog()?
 I only use it for those hard to debug crashes */
 #define FLUSH 0
 
-static char szAppName[] = APPNAME;
-static char szTitle[]   = APPNAME;
+static char szAppName[] = WINDOW_CAPTION;
+static char szTitle[]   = WINDOW_CAPTION " - GDI";
 
 Bitmap *screen = NULL;
 
@@ -58,8 +65,8 @@ int mouse_clicked() {
 void mouse_pos(int *xp, int *yp) {
     assert(xp != NULL);
     assert(yp != NULL);
-    *xp = mouse_x / (WINDOW_WIDTH / SCREEN_WIDTH);
-    *yp = mouse_y / (WINDOW_HEIGHT / SCREEN_HEIGHT);
+    *xp = mouse_x * SCREEN_WIDTH / WINDOW_WIDTH;
+    *yp = mouse_y * SCREEN_HEIGHT / WINDOW_HEIGHT;
 }
 
 static FILE *logfile = NULL;

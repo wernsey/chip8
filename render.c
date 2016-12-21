@@ -122,7 +122,7 @@ void init_game(int argc, char *argv[]) {
 	draw_screen();
 
 #ifdef __EMSCRIPTEN__
-	/* I Couldn't figure out why this is necessary on the emscripten port: */
+	/* I couldn't figure out why this is necessary on the emscripten port: */
 	Key_Mapping[0] = KCODEA(x,X);
 	Key_Mapping[1] = KCODE(1);
 	Key_Mapping[2] = KCODE(2);
@@ -249,9 +249,3 @@ int render(double elapsedSeconds) {
 
 	return 1;
 }
-
-int pointer_down(int x, int y, int id){return 0;}
-int pointer_up(int x, int y, int id){return 0;}
-int pointer_move(int x, int y, int id){return 0;}
-int pointer_click(int x, int y, int id){return 0;}
-int key_press(int code){return 0;}

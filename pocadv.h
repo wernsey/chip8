@@ -1,6 +1,4 @@
 
-#define WINDOW_CAPTION "CHIP-8 Interpreter"
-
 #ifdef ANDROID
 #  include <SDL.h>
 #  ifndef SDL2
@@ -36,8 +34,7 @@
 #include <emscripten.h>
 #endif
 
-#define SCREEN_WIDTH    128
-#define SCREEN_HEIGHT   (64 + 24)
+#include "app.h"
 
 /* Set to one to make ESC quit the game - when debugging */
 #define ESCAPE_QUITS	1
@@ -65,20 +62,19 @@ extern Bitmap *get_bmp(const char *filename);
 
 extern char *read_text_file(const char *fname);
 
-extern void rlog(const char *fmt, ...); 
+extern void rlog(const char *fmt, ...);
 
 extern void rerror(const char *fmt, ...);
 
 extern void exit_error(const char *msg, ...);
 
+int key_pressed();
+
+int mouse_clicked();
+
+void mouse_pos(int *xp, int *yp);
+
 /* These functions should be provided elsewhere */
 extern void init_game(int argc, char *argv[]);
 extern void deinit_game();
 extern int render(double deltaTime);
-
-/* Implement these to handle mouse pointer / touchscreen events */
-extern int pointer_down(int x, int y, int id);
-extern int pointer_up(int x, int y, int id);
-extern int pointer_move(int x, int y, int id);
-extern int pointer_click(int x, int y, int id);
-extern int key_press(int code);

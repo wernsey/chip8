@@ -1,10 +1,10 @@
 /*
 Compiling with GCC (MinGW):
- $ gcc -I/local/include `sdl-config --cflags` test.c `sdl-config --libs`
+ $ gcc -I/local/include `sdl-config --cflags` pocadv.c test.c `sdl-config --libs`
 
 Compiling with Emscripten:
  $ emsdk activate latest ; from the emsdk-xxx directory
- $ emcc -O2 test.c -o hello.html
+ $ emcc -O2 pocadv.c test.c -o hello.html
  $ python -m SimpleHTTPServer 8080 &
 */
 
@@ -14,39 +14,58 @@ Compiling with Emscripten:
 #include <math.h>
 #include <time.h>
 #include <stdarg.h>
+#include <assert.h>
 
 #include "pocadv.h"
 
 int quit = 0;
 
-#ifdef SDL2
-#  if defined(ANDROID) || USE_OPENGL
-#    define SCREEN_SCALE	1
-#  else
-#    define SCREEN_SCALE	2
-#  endif
-#else
-#  define SCREEN_SCALE	1
-#endif
+#define VSCREEN_WIDTH    (SCREEN_WIDTH * (EPX_SCALE?2:1))
+#define VSCREEN_HEIGHT   (SCREEN_HEIGHT * (EPX_SCALE?2:1))
+#define WINDOW_WIDTH 	(VSCREEN_WIDTH * SCREEN_SCALE)
+#define WINDOW_HEIGHT 	(VSCREEN_HEIGHT * SCREEN_SCALE)
 
 #ifndef SDL2
 static SDL_Surface *window;
 #else
-#  if USE_OPENGL
-#else
 static SDL_Renderer *renderer = NULL;
 static SDL_Texture *texture = NULL;
-#endif
 static SDL_Window *window;
 #endif
 
 Bitmap *screen;
+#ifndef SDL2
+Bitmap *vscreen;
+#endif
 
 #ifndef SDL2
 char keys[SDLK_LAST];
 #else
 char keys[SDL_NUM_SCANCODES];
 #endif
+static int pressed_key = 0;
+
+static int mouse_x, mouse_y, mclick = 0;
+
+#if EPX_SCALE
+static Bitmap *scale_epx_i(Bitmap *in, Bitmap *out);
+static Bitmap *epx;
+#endif
+
+int mouse_clicked() {
+    return mclick;
+}
+
+void mouse_pos(int *xp, int *yp) {
+    assert(xp != NULL);
+    assert(yp != NULL);
+    *xp = mouse_x;
+    *yp = mouse_y;
+}
+
+int key_pressed() {
+    return pressed_key;
+}
 
 /* Handle special keys */
 #ifdef SDL2
@@ -61,7 +80,7 @@ static int handleKeys(SDLKey key) {
 	/* TODO: F11 for fullscreen, etc. */
 #if !defined(__EMSCRIPTEN__)
     case KCODE(F12):  {
-		/* F12 for screenshots. Doesn't make sense in the browser. */
+		/* F12 for screenshots; Doesn't make sense in the browser. */
 		char filename[128];
 		time_t t;
 		struct tm *tmp;
@@ -80,7 +99,7 @@ char *read_text_file(const char *fname) {
 	FILEOBJ *f;
 	long len,r;
 	char *str;
-    
+
 	if(!(f = FOPEN(fname, "rb")))
 		return NULL;
 
@@ -106,7 +125,7 @@ static const char *lastEvent = "---";
 static int finger_id = -1;
 
 static void handle_events() {
-    
+
     SDL_Event event;
 
     while(SDL_PollEvent(&event)) {
@@ -117,13 +136,47 @@ static void handle_events() {
                 if(handleKeys(event.key.keysym.scancode))
                     break;
                 keys[event.key.keysym.scancode] = 1;
-				key_press(event.key.keysym.scancode);
+				pressed_key = event.key.keysym.sym;
+				if(!(pressed_key & 0x40000000)) {
+					if(event.key.keysym.mod & (KMOD_LSHIFT | KMOD_RSHIFT)) {
+						if(isalpha(pressed_key)) {
+							pressed_key = toupper(pressed_key);
+						} else {
+							/* This would not work with different keyboard layouts */
+							static const char *in  = "`1234567890-=[],./;'\\";
+							static const char *out = "~!@#$%^&*()_+{}<>?:\"|";
+							char *p = strchr(in, pressed_key);
+							if(p) {
+								pressed_key = out[p-in];
+							}
+						}
+					} else if (pressed_key == SDLK_DELETE) {
+						// The Del key is a bit special...
+						pressed_key = 0x40000000 | SDL_SCANCODE_DELETE;
+					}
+				}
 #else
                 if(handleKeys(event.key.keysym.sym))
                     break;
-                //rlog("Key down: %3u 0x%02X", event.key.keysym.sym, event.key.keysym.sym);
                 keys[event.key.keysym.sym] = 1;
-				key_press(event.key.keysym.sym);
+				pressed_key = event.key.keysym.sym;
+				if(pressed_key > 0xFF) {
+					pressed_key |= 0x40000000;
+				} else if(event.key.keysym.mod & (KMOD_LSHIFT | KMOD_RSHIFT)) {
+					if(isalpha(pressed_key)) {
+						pressed_key = toupper(pressed_key);
+					} else {
+						/* This would not work with different keyboard layouts */
+						static const char *in  = "`1234567890-=[],./;'\\";
+						static const char *out = "~!@#$%^&*()_+{}<>?:\"|";
+						char *p = strchr(in, pressed_key);
+						if(p) {
+							pressed_key = out[p-in];
+						}
+					}
+				} else if (pressed_key == SDLK_DELETE) {
+					pressed_key = 0x40000000 | SDLK_DELETE;
+				}
 #endif
             } break;
             case SDL_KEYUP: {
@@ -132,25 +185,22 @@ static void handle_events() {
                 keys[event.key.keysym.scancode] = 0;
 #else
                 keys[event.key.keysym.sym] = 0;
-#endif                
+#endif
             } break;
 #ifndef ANDROID /* Ignore the mouse on android, that's what the touch events are for */
             case SDL_MOUSEBUTTONDOWN: {
-                lastEvent = "Mouse Down";finger_id = 0;				
+                lastEvent = "Mouse Down";finger_id = 0;
 				if(event.button.button != SDL_BUTTON_LEFT) break;
-				if(!pointer_click(event.button.x / SCREEN_SCALE, event.button.y / SCREEN_SCALE, finger_id)) {
-					pointer_down(event.button.x / SCREEN_SCALE, event.button.y / SCREEN_SCALE, finger_id);
-				}
+				mclick = 1;
             } break;
-            case SDL_MOUSEBUTTONUP: { 
+            case SDL_MOUSEBUTTONUP: {
                 lastEvent = "Mouse Up";finger_id = 0;
 				if(event.button.button != SDL_BUTTON_LEFT) break;
-                pointer_up(event.button.x / SCREEN_SCALE, event.button.y / SCREEN_SCALE, finger_id);
             } break;
-            case SDL_MOUSEMOTION: { 
+            case SDL_MOUSEMOTION: {
                 lastEvent = "Mouse Move";finger_id = 0;
-				if(!(event.motion.state & SDL_BUTTON(1))) break;
-                pointer_move(event.motion.x / SCREEN_SCALE, event.motion.y / SCREEN_SCALE, finger_id);
+				mouse_x = event.button.x * SCREEN_WIDTH / WINDOW_WIDTH;
+				mouse_y = event.button.y * SCREEN_HEIGHT / WINDOW_HEIGHT;
             } break;
 #endif
 #if defined(SDL2) && defined(ANDROID)
@@ -161,12 +211,12 @@ static void handle_events() {
 					pointer_down(x, y,finger_id);
 				}
             } break;
-            case SDL_FINGERUP: { 
+            case SDL_FINGERUP: {
                 lastEvent = "Finger Up";finger_id=event.tfinger.fingerId;
                 int x = (int)(event.tfinger.x * SCREEN_WIDTH), y = (int)(event.tfinger.y * SCREEN_HEIGHT);
                 pointer_up(x, y,finger_id);
             } break;
-            case SDL_FINGERMOTION: { 
+            case SDL_FINGERMOTION: {
                 lastEvent = "Finger Motion";finger_id=event.tfinger.fingerId;
                 int x = (int)(event.tfinger.x * SCREEN_WIDTH), y = (int)(event.tfinger.y * SCREEN_HEIGHT);
                 pointer_move(x, y,finger_id);
@@ -190,32 +240,38 @@ Bitmap *get_bmp(const char *filename) {
     return bmp;
 }
 
-static void draw_frame() {    
+static void draw_frame() {
     static Uint32 start = 0;
 	static Uint32 elapsed = 0;
-	
-	elapsed = SDL_GetTicks() - start;
-	
-	if(elapsed < 1) return;
-    
-#if defined(SDL2) && USE_OPENGL
-	SDL_GetWindowSize(window, &w, &h);
-#endif
 
-	double deltaTime = elapsed / 1000.0;		
+	elapsed = SDL_GetTicks() - start;
+
+	if(elapsed < 1) return;
+
+	double deltaTime = elapsed / 1000.0;
     if(!render(deltaTime)) {
 		quit = 1;
 	}
-	
+
     start = SDL_GetTicks();
-	
-#if 0 /* If you need debug info on the screen : */    
-    bm_set_color_s(screen, "white");
-    bm_printf(screen, 10, 10, "%d / %.2f", elapsed, deltaTime);
-    /* bm_printf(screen, 10, 20, "%s %d", lastEvent, finger_id); */
+
+#if 0 /* If you need debug info on the screen : */
+    bm_set_color(screen, bm_atoi("black"));
+	bm_fillrect(screen, 10, 5, 100, 32);
+    bm_set_color(screen, bm_atoi("white"));
+    bm_printf(screen, 10, 8, "%d / %.2f", elapsed, deltaTime);
+    bm_printf(screen, 10, 16, "%s %d", lastEvent, finger_id);
+    bm_printf(screen, 10, 24, "%d %d", pressed_key, mclick);
 #else
 	(void)elapsed;
 #endif
+
+#if EPX_SCALE
+	scale_epx_i(screen, epx);
+#endif
+
+	mclick = 0;
+	pressed_key = 0;
 }
 
 #define USE_SDL_LOG 0
@@ -223,7 +279,7 @@ static void draw_frame() {
 static FILE *logfile = NULL;
 
 void rlog(const char *fmt, ...) {
-	va_list arg;	
+	va_list arg;
 	va_start(arg, fmt);
 #if defined(SDL2) && USE_SDL_LOG
     SDL_LogMessageV(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO, fmt, arg);
@@ -236,7 +292,7 @@ void rlog(const char *fmt, ...) {
 }
 
 void rerror(const char *fmt, ...) {
-	va_list arg;	
+	va_list arg;
 	va_start(arg, fmt);
 #if defined(SDL2) && USE_SDL_LOG
     SDL_LogMessageV(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_WARN, fmt, arg);
@@ -267,63 +323,39 @@ void exit_error(const char *fmt, ...) {
 
 static void do_iteration() {
 #ifndef SDL2
-#  if !USE_OPENGL
     if(SDL_MUSTLOCK(window))
         SDL_LockSurface(window);
-	bm_rebind(screen, window->pixels);
-#  endif
-   
+	bm_rebind(vscreen, window->pixels);
     handle_events();
 
     draw_frame();
 
-#  if USE_OPENGL
-	SDL_GL_SwapWindow(window);
+#  if EPX_SCALE
+	bm_blit_ex(vscreen, 0, 0, vscreen->w, vscreen->h, epx, 0, 0, epx->w, epx->h, 0);
 #  else
+	bm_blit_ex(vscreen, 0, 0, vscreen->w, vscreen->h, screen, 0, 0, screen->w, screen->h, 0);
+#  endif
+
     if(SDL_MUSTLOCK(window))
         SDL_UnlockSurface(window);
     SDL_Flip(window);
-#  endif
 #else
     handle_events();
-    
+
     draw_frame();
-    
-#  if USE_OPENGL
-    SDL_GL_SwapWindow(window);
+
+#  if EPX_SCALE
+	SDL_UpdateTexture(texture, NULL, epx->data, epx->w*4);
 #  else
     SDL_UpdateTexture(texture, NULL, screen->data, screen->w*4);
+#  endif
 	SDL_RenderClear(renderer);
 	SDL_RenderCopy(renderer, texture, NULL, NULL);
 	SDL_RenderPresent(renderer);
-#  endif
 #endif
 }
-
-#if USE_OPENGL
-static int setup_view(int width, int height) {
-	if(height == 0)
-		height = 1;
-	rlog("Setup view: %d x %d", width, height);
-	/* float ratio = (float)width/(float)height; */
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
-	glewExperimental = GL_TRUE;
-	GLenum err = glewInit();
-	if (err != GLEW_OK) {
-		rerror("Couldn't init GLEW: %s", glewGetErrorString(err));
-		return 0;
-	}
-#endif 
-	return 1;
-}
-#endif
 
 int main(int argc, char *argv[]) {
-    
-#if defined(SDL2) && USE_OPENGL
-	SDL_GLContext glcontext;
-	const char *error;
-#endif
 
 #ifdef __EMSCRIPTEN__
 	logfile = stdout;
@@ -332,80 +364,65 @@ int main(int argc, char *argv[]) {
 #endif
 
     rlog("%s: Application Running", WINDOW_CAPTION);
-    
+
     srand(time(NULL));
-    
+
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
-   
+
 #ifdef SDL2
-#  if USE_OPENGL
-	window = SDL_CreateWindow(WINDOW_CAPTION " - SDL2 OpenGL",
-						  SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-						  SCREEN_WIDTH * SCREEN_SCALE, SCREEN_HEIGHT * SCREEN_SCALE,
-						  SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);		
-    if(!window) {
-		rerror("%s","SDL_CreateWindow()");
-		return 0;
-	}
-		
-	glcontext = SDL_GL_CreateContext(window);
-	error = SDL_GetError();
-	if(error[0] != '\0') {
-		rerror("SDL: %s", error);
-		return 1;
-	}
-	SDL_GL_SetSwapInterval(1);
-	
-	if(!setup_view(SCREEN_WIDTH, SCREEN_HEIGHT)) return 1;
-#  else
     window = SDL_CreateWindow(WINDOW_CAPTION " - SDL2",
                           SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                          SCREEN_WIDTH * SCREEN_SCALE, SCREEN_HEIGHT * SCREEN_SCALE,
+                          WINDOW_WIDTH, WINDOW_HEIGHT,
                           SDL_WINDOW_SHOWN);
     if(!window) {
 		rerror("%s","SDL_CreateWindow()");
 		return 0;
 	}
-	
+
     renderer = SDL_CreateRenderer(window, -1, 0);
     if(!renderer) {
 		rerror("%s","SDL_CreateRenderer()");
 		return 1;
 	}
-	
+
+#  if EPX_SCALE
+	epx = bm_create(VSCREEN_WIDTH, VSCREEN_HEIGHT);
+    screen = bm_create(SCREEN_WIDTH, SCREEN_HEIGHT);
+    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, VSCREEN_WIDTH, VSCREEN_HEIGHT);
+	if(!texture) {
+		rerror("%s","SDL_CreateTexture()");
+		return 1;
+	}
+#  else
+	screen = bm_create(SCREEN_WIDTH, SCREEN_HEIGHT);
     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_WIDTH, SCREEN_HEIGHT);
 	if(!texture) {
 		rerror("%s","SDL_CreateTexture()");
 		return 1;
 	}
-#  endif    
-    screen = bm_create(SCREEN_WIDTH, SCREEN_HEIGHT);
+#  endif
+
     init_game(argc, argv);
 #else
-/* Using SDL 1.2 */
-#  if USE_OPENGL
-	SDL_WM_SetCaption(WINDOW_CAPTION " - SDL1.2 OpenGL", "game");
-	if(!(window = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 32, SDL_OPENGL))) {
-		rerror("Set Video Mode Failed: %s\n", SDL_GetError());
-		return 1;
-	}
-	setup_view(SCREEN_WIDTH, SCREEN_HEIGHT);
-    screen = bm_create(SCREEN_WIDTH, SCREEN_HEIGHT);
-    init_game(argc, argv);
-#else
+	/* Using SDL 1.2 */
     SDL_WM_SetCaption(WINDOW_CAPTION " - SDL1.2", "game");
-    window = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 32, SDL_SWSURFACE);
-    
+    window = SDL_SetVideoMode(WINDOW_WIDTH, WINDOW_HEIGHT, 32, SDL_SWSURFACE);
+
+	screen = bm_create(SCREEN_WIDTH, SCREEN_HEIGHT);
+#  if EPX_SCALE
+	epx = bm_create(VSCREEN_WIDTH, VSCREEN_HEIGHT);
+#  endif
     if(SDL_MUSTLOCK(window)) {
         SDL_LockSurface(window);
-		screen = bm_bind(SCREEN_WIDTH, SCREEN_HEIGHT, window->pixels);
+		vscreen = bm_bind(WINDOW_WIDTH, WINDOW_HEIGHT, window->pixels);
 		init_game(argc, argv);
-		SDL_UnlockSurface(window);  
+		SDL_UnlockSurface(window);
 	} else {
-		screen = bm_bind(SCREEN_WIDTH, SCREEN_HEIGHT, window->pixels);
-		init_game(argc, argv);  
+		vscreen = bm_bind(WINDOW_WIDTH, WINDOW_HEIGHT, window->pixels);
+		init_game(argc, argv);
 	}
-#  endif
+
+	SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
 #endif
 
 #ifdef TEST_SDL_LOCK_OPTS
@@ -420,32 +437,65 @@ int main(int argc, char *argv[]) {
     while(!quit) {
         do_iteration();
     }
-    
+
     deinit_game();
-    
+
 #endif
     rlog("%s: Main loop stopped", WINDOW_CAPTION);
 #ifdef SDL2
-#  if USE_OPENGL
-	SDL_GL_DeleteContext(glcontext);
-#  else	
 	SDL_DestroyTexture(texture);
 	SDL_DestroyRenderer(renderer);
-#  endif
 	SDL_DestroyWindow(window);
     bm_free(screen);
-#else
-#  if USE_OPENGL
-	bm_free(screen);
-#  else
-    bm_unbind(screen);
+#  if EPX_SCALE
+	bm_free(epx);
 #  endif
+
+#else
+    bm_unbind(vscreen);
+	bm_free(screen);
+#  if EPX_SCALE
+	bm_free(epx);
+#  endif
+
 #endif
 
     SDL_Quit();
-    
+
     rlog("%s","Application Done!\n");
     if(logfile != stdout && logfile != stderr)
 		fclose(logfile);
     return 0;
 }
+/* EPX 2x scaling */
+#if EPX_SCALE
+static Bitmap *scale_epx_i(Bitmap *in, Bitmap *out) {
+	int x, y, mx = in->w, my = in->h;
+	if(!out) return NULL;
+	if(!in) return out;
+	if(out->w < (mx << 1)) mx = (out->w - 1) >> 1;
+	if(out->h < (my << 1)) my = (out->h - 1) >> 1;
+	for(y = 0; y < my; y++) {
+		for(x = 0; x < mx; x++) {
+			unsigned int P = bm_get(in, x, y);
+			unsigned int A = (y > 0) ? bm_get(in, x, y - 1) : P;
+			unsigned int B = (x < in->w - 1) ? bm_get(in, x + 1, y) : P;
+			unsigned int C = (x > 0) ? bm_get(in, x - 1, y) : P;
+			unsigned int D = (y < in->h - 1) ? bm_get(in, x, y + 1) : P;
+
+			unsigned int P1 = P, P2 = P, P3 = P, P4 = P;
+
+			if(C == A && C != D && A != B) P1 = A;
+			if(A == B && A != C && B != D) P2 = B;
+			if(B == D && B != A && D != C) P4 = D;
+			if(D == C && D != B && C != A) P3 = C;
+
+			bm_set(out, (x << 1), (y << 1), P1);
+			bm_set(out, (x << 1) + 1, (y << 1), P2);
+			bm_set(out, (x << 1), (y << 1) + 1, P3);
+			bm_set(out, (x << 1) + 1, (y << 1) + 1, P4);
+		}
+	}
+	return out;
+}
+#endif

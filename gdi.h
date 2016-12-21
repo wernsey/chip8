@@ -1,17 +1,6 @@
 #include "bmp.h"
 
-#define APPNAME "Win32/GDI CHIP-8 Machine"
-
-#define EPX_SCALE		0
-
-#define SCREEN_WIDTH    128
-#define SCREEN_HEIGHT   (64 + 24)
-
-#define VSCREEN_WIDTH    (SCREEN_WIDTH * (EPX_SCALE?2:1))
-#define VSCREEN_HEIGHT   (SCREEN_HEIGHT * (EPX_SCALE?2:1))
-#define WINDOW_WIDTH 	(VSCREEN_WIDTH * 2)
-#define WINDOW_HEIGHT 	(VSCREEN_HEIGHT * 2)
-
+#include "app.h"
 
 extern void init_game(int argc, char *argv[]);
 extern void deinit_game();
@@ -19,8 +8,10 @@ extern int render(double elapsedSeconds);
 
 #define FPS 33
 
-/* You can find the values for various keys in winuser.h 
-   (they all start with VK_*) */
+/* You can find the values for various keys in winuser.h
+   (they all start with VK_*)
+   Don't use them directly; Rather use the KCODE(k) macro below.
+*/
 #define KEY_ESCAPE  0x1B
 #define KEY_SPACE   0x20
 #define KEY_LEFT    0x25
@@ -28,15 +19,16 @@ extern int render(double elapsedSeconds);
 #define KEY_RIGHT   0x27
 #define KEY_DOWN    0x28
 
-#define KEY_SHIFT   0x10
+#define KEY_LSHIFT  0xA0
+#define KEY_RSHIFT  0xA1
 #define KEY_CTRL    0x11
 
 #define KEY_HOME    0x24
 #define KEY_END     0x23
 #define KEY_BKSP    0x08
-#define KEY_DEL     0x2E
-#define KEY_PGDN    0x22
-#define KEY_PGUP    0x21
+#define KEY_DELETE      0x2E
+#define KEY_PAGEDOWN    0x22
+#define KEY_PAGEUP  0x21
 
 #define KEY_F1  0x70
 #define KEY_F2  0x71
@@ -68,7 +60,7 @@ int mouse_clicked();
 
 void mouse_pos(int *xp, int *yp);
 
-extern void rlog(const char *fmt, ...); 
+extern void rlog(const char *fmt, ...);
 
 extern void rerror(const char *fmt, ...);
 
