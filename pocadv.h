@@ -41,9 +41,6 @@
 
 #include "app.h"
 
-/* Set to one to make ESC quit the game - when debugging */
-#define ESCAPE_QUITS	1
-
 #include "bmp.h"
 
 #define MIN(a,b) ((a)<(b)?(a):(b))
@@ -73,11 +70,13 @@ extern void rerror(const char *fmt, ...);
 
 extern void exit_error(const char *msg, ...);
 
-int key_pressed();
+extern int key_pressed();
 
-int mouse_clicked();
-
-void mouse_pos(int *xp, int *yp);
+extern int mouse_clicked();
+extern int mouse_released();
+extern int mouse_down();
+extern int mouse_moved();
+extern int mouse_x, mouse_y;
 
 /* These functions should be provided elsewhere */
 extern void init_game(int argc, char *argv[]);

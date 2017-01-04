@@ -56,9 +56,11 @@ otherwise it is special.
 */
 int key_pressed();
 
-int mouse_clicked();
-
-void mouse_pos(int *xp, int *yp);
+extern int mouse_clicked();
+extern int mouse_released();
+extern int mouse_down();
+extern int mouse_moved();
+extern int mouse_x, mouse_y;
 
 extern void rlog(const char *fmt, ...);
 

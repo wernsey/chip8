@@ -5,3 +5,6 @@
 
 #define SCREEN_WIDTH    128
 #define SCREEN_HEIGHT   (64 + 24)
+
+/* Set to one to make ESC quit the game - when debugging */
+#define ESCAPE_QUITS	1

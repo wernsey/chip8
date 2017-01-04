@@ -45,7 +45,8 @@ https://msdn.microsoft.com/en-us/library/windows/desktop/dd375731(v=vs.85).aspx 
 char keys[MAX_KEYS];
 static int pressed_key = 0;
 
-static int mouse_x, mouse_y, click = 0;
+int mouse_x, mouse_y;
+static int mclick = 0, mdown = 0, mrelease = 0, mmove = 0;
 
 static int quit;
 
@@ -59,20 +60,20 @@ void clear_keys() {
         keys[i] = 0;
     }
 }
-
+int mouse_clicked() {
+    return mclick;
+}
+int mouse_down() {
+    return mdown;
+}
+int mouse_released() {
+    return mrelease;
+}
+int mouse_moved() {
+    return mmove;
+}
 int key_pressed() {
     return pressed_key;
-}
-
-int mouse_clicked() {
-    return click;
-}
-
-void mouse_pos(int *xp, int *yp) {
-    assert(xp != NULL);
-    assert(yp != NULL);
-    *xp = mouse_x * SCREEN_WIDTH / WINDOW_WIDTH;
-    *yp = mouse_y * SCREEN_HEIGHT / WINDOW_HEIGHT;
 }
 
 static FILE *logfile = NULL;
@@ -237,14 +238,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         case WM_LBUTTONDOWN:
         case WM_LBUTTONDBLCLK: /* ...all clicks treated equally */
         {
-            mouse_x = LOWORD(lParam);
-            mouse_y = HIWORD(lParam);
-            click = 1;
+            mouse_x = LOWORD(lParam) * SCREEN_WIDTH / WINDOW_WIDTH;
+            mouse_y = HIWORD(lParam) * SCREEN_HEIGHT / WINDOW_HEIGHT;
+			mdown = 1;
+			mrelease = 0;
+			mclick = 1;
+        } break;
+		
+        case WM_LBUTTONUP:
+        {
+			mdown = 0;
+			mrelease = 1;
         } break;
         case WM_MOUSEMOVE:
         {
-            mouse_x = LOWORD(lParam);
-            mouse_y = HIWORD(lParam);
+            mouse_x = LOWORD(lParam) * SCREEN_WIDTH / WINDOW_WIDTH;
+            mouse_y = HIWORD(lParam) * SCREEN_HEIGHT / WINDOW_HEIGHT;
+			mmove = 1;
         } break;
         case WM_PAINT:
         {
@@ -359,7 +369,7 @@ int APIENTRY WinMain(
                 else
                     bm_printf(screen, 10, 10, "%d", pressed_key);
             }
-            if(click)
+            if(mclick)
                 bm_printf(screen, 10, 18, "%d,%d", mouse_x, mouse_y);
 #endif
             /*****************************/
@@ -367,7 +377,9 @@ int APIENTRY WinMain(
             InvalidateRect(hwnd, 0, TRUE);
             elapsedSeconds = 0.0;
             pressed_key = 0;
-            click = 0;
+			mrelease = 0;
+			mmove = 0;
+            mclick = 0;
         }
     }
     rlog("%s","GDI Framework: Main loop stopped");

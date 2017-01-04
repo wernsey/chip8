@@ -40,7 +40,8 @@ char keys[SDL_NUM_SCANCODES];
 #endif
 static int pressed_key = 0;
 
-static int mouse_x, mouse_y, mclick = 0;
+int mouse_x, mouse_y;
+static int mclick = 0, mdown = 0, mrelease = 0, mmove = 0;
 
 #if EPX_SCALE
 static Bitmap *scale_epx_i(Bitmap *in, Bitmap *out);
@@ -51,17 +52,20 @@ static int show_fps = 0;
 static double frameTimes[256];
 static Uint32 n_elapsed = 0;
 
+/* This leaves a bit to be desired if I'm to 
+support multi-touch on mobile eventually */
 int mouse_clicked() {
     return mclick;
 }
-
-void mouse_pos(int *xp, int *yp) {
-    assert(xp != NULL);
-    assert(yp != NULL);
-    *xp = mouse_x;
-    *yp = mouse_y;
+int mouse_down() {
+    return mdown;
 }
-
+int mouse_released() {
+    return mrelease;
+}
+int mouse_moved() {
+    return mmove;
+}
 int key_pressed() {
     return pressed_key;
 }
@@ -191,16 +195,21 @@ static void handle_events() {
             case SDL_MOUSEBUTTONDOWN: {
                 lastEvent = "Mouse Down";finger_id = 0;
 				if(event.button.button != SDL_BUTTON_LEFT) break;
+				mdown = 1;
+				mrelease = 0;
 				mclick = 1;
             } break;
             case SDL_MOUSEBUTTONUP: {
                 lastEvent = "Mouse Up";finger_id = 0;
 				if(event.button.button != SDL_BUTTON_LEFT) break;
+				mdown = 0;
+				mrelease = 1;
             } break;
             case SDL_MOUSEMOTION: {
                 lastEvent = "Mouse Move";finger_id = 0;
 				mouse_x = event.button.x * SCREEN_WIDTH / WINDOW_WIDTH;
 				mouse_y = event.button.y * SCREEN_HEIGHT / WINDOW_HEIGHT;
+				mmove = 1;
             } break;
 #endif
 #if defined(SDL2) && defined(ANDROID)
@@ -246,7 +255,10 @@ static void draw_frame() {
 
 	elapsed = SDL_GetTicks() - start;
 
-	if(elapsed < 1) return;
+	/* It is technically possible for the game to run
+	   too fast, rendering the deltaTime useless */
+	if(elapsed < 10) 
+		return;
 
 	double deltaTime = elapsed / 1000.0;
     if(!render(deltaTime)) {
@@ -283,6 +295,8 @@ static void draw_frame() {
 #endif
 
 	mclick = 0;
+	mrelease = 0;
+	mmove = 0;
 	pressed_key = 0;
 }
 
