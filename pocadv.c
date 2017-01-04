@@ -47,6 +47,10 @@ static Bitmap *scale_epx_i(Bitmap *in, Bitmap *out);
 static Bitmap *epx;
 #endif
 
+static int show_fps = 0;
+static double frameTimes[256];
+static Uint32 n_elapsed = 0;
+
 int mouse_clicked() {
     return mclick;
 }
@@ -74,6 +78,7 @@ static int handleKeys(SDLKey key) {
 #endif
 	/* TODO: F11 for fullscreen, etc. */
 #if !defined(__EMSCRIPTEN__)
+    case KCODE(F10):  show_fps = !show_fps; return 1;
     case KCODE(F12):  {
 		/* F12 for screenshots; Doesn't make sense in the browser. */
 		char filename[128];
@@ -260,6 +265,18 @@ static void draw_frame() {
 #else
 	(void)elapsed;
 #endif
+	if(show_fps && n_elapsed > 0) {
+		double sum = 0;
+		int i, n = n_elapsed > 0xFF ? 0xFF : n_elapsed; 
+		for(i = 0; i < n; i++) sum += frameTimes[i];
+		double avg = sum / n;
+		double fps = 1.0 / avg;
+		bm_set_color(screen, bm_atoi("red"));
+		bm_fillrect(screen, 0, 0, 50, 10);
+		bm_set_color(screen, bm_atoi("yellow"));
+		bm_printf(screen, 1, 1, "%3.2f", fps);
+	}
+	frameTimes[(n_elapsed++) & 0xFF] = deltaTime;
 
 #if EPX_SCALE
 	scale_epx_i(screen, epx);

@@ -1794,6 +1794,7 @@ static int bm_save_gif(Bitmap *b, const char *fname) {
         gif.lsd.fields |= 0x07;
 
         /* color quantization - see bm_save_pcx() */
+		/* FIXME: The color quantization shouldn't depend on rand() :( */
         nc = 0;
         for(nc = 0; nc < 256; nc++) {
             int c = bm_get(b, rand()%b->w, rand()%b->h);
@@ -2083,8 +2084,11 @@ static int bm_save_pcx(Bitmap *b, const char *fname) {
     if(ncolors < 0) {
         /* This is my poor man's color quantization hack:
             Sample random pixels and generate a palette from them.
-            A better solution would be to use some clustering, but
-            I don't have the stomach for that now. */
+			FIXME: The color quantization shouldn't depend on rand() :(
+			Rosettacode has a nice color quantization implementation.
+			http://rosettacode.org/wiki/Color_quantization#C
+			http://rosettacode.org/wiki/Color_quantization/C
+		*/
         unsigned int palette[256], q;
         ncolors = 0;
         for(ncolors = 0; ncolors < 256; ncolors++) {

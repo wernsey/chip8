@@ -10,6 +10,7 @@
  * * https://www-user.tu-chemnitz.de/~heha/petzold/ch14e.htm
  * * https://www-user.tu-chemnitz.de/~heha/petzold/ch15d.htm
  * * http://forums.codeguru.com/showthread.php?487633-32-bit-DIB-from-24-bit-bitmap
+ * * HELLO_WIN.C example of the tcc C compiler
  */
 
 #include <stdio.h>
