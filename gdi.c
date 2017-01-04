@@ -1,11 +1,16 @@
-/*
-Evolved from the HELLO_WIN.C example in tcc
-References:
-https://www.daniweb.com/software-development/cpp/code/241875/fast-animation-with-the-windows-gdi
-https://www-user.tu-chemnitz.de/~heha/petzold/ch14e.htm
-https://www-user.tu-chemnitz.de/~heha/petzold/ch15d.htm
-http://forums.codeguru.com/showthread.php?487633-32-bit-DIB-from-24-bit-bitmap
-*/
+/**
+ * Win32 application that allows rendering directly to a GDI contexts 
+ * through my bitmap module.
+ * (for simple games without any third party dependencies)
+ * 
+ * ## References:
+ * 
+ * * The bitmap module: https://github.com/wernsey/bitmap
+ * * https://www.daniweb.com/software-development/cpp/code/241875/fast-animation-with-the-windows-gdi
+ * * https://www-user.tu-chemnitz.de/~heha/petzold/ch14e.htm
+ * * https://www-user.tu-chemnitz.de/~heha/petzold/ch15d.htm
+ * * http://forums.codeguru.com/showthread.php?487633-32-bit-DIB-from-24-bit-bitmap
+ */
 
 #include <stdio.h>
 #include <stdlib.h>

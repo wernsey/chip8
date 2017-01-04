@@ -1,12 +1,7 @@
 /*
-Compiling with GCC (MinGW):
- $ gcc -I/local/include `sdl-config --cflags` pocadv.c test.c `sdl-config --libs`
-
-Compiling with Emscripten:
- $ emsdk activate latest ; from the emsdk-xxx directory
- $ emcc -O2 pocadv.c test.c -o hello.html
- $ python -m SimpleHTTPServer 8080 &
-*/
+ * Pocket Adventure
+ * ================
+ */
 
 #include <stdio.h>
 #include <stdlib.h>

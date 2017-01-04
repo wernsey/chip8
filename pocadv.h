@@ -1,4 +1,9 @@
-
+/*
+ * Pocket Adventure
+ * ================
+ *
+ * The simplest SDL wrapper framework I could get away with.
+ */
 #ifdef ANDROID
 #  include <SDL.h>
 #  ifndef SDL2
