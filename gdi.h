@@ -69,3 +69,5 @@ extern void rerror(const char *fmt, ...);
 extern void exit_error(const char *msg, ...);
 
 extern char *readfile(const char *fname);
+
+extern int show_debug();

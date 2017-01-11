@@ -15,6 +15,11 @@
 
 int quit = 0;
 
+#if SCREEN_SCALE == 0
+/* This has happened to me more than once */
+#  error "You set SCREEN_SCALE to 0 again, dummy!"
+#endif
+
 #define VSCREEN_WIDTH    (SCREEN_WIDTH * (EPX_SCALE?2:1))
 #define VSCREEN_HEIGHT   (SCREEN_HEIGHT * (EPX_SCALE?2:1))
 #define WINDOW_WIDTH 	(VSCREEN_WIDTH * SCREEN_SCALE)
@@ -48,7 +53,7 @@ static Bitmap *scale_epx_i(Bitmap *in, Bitmap *out);
 static Bitmap *epx;
 #endif
 
-static int show_fps = 0;
+static int dodebug = 0;
 static double frameTimes[256];
 static Uint32 n_elapsed = 0;
 
@@ -70,6 +75,14 @@ int key_pressed() {
     return pressed_key;
 }
 
+int show_debug() {
+// #ifdef NDEBUG
+	// return 0;
+// #else
+	return dodebug;
+// #endif
+}
+
 /* Handle special keys */
 #ifdef SDL2
 static int handleKeys(SDL_Scancode key) {
@@ -82,7 +95,7 @@ static int handleKeys(SDLKey key) {
 #endif
 	/* TODO: F11 for fullscreen, etc. */
 #if !defined(__EMSCRIPTEN__)
-    case KCODE(F10):  show_fps = !show_fps; return 1;
+    case KCODE(F10):  dodebug = !dodebug; return 1;
     case KCODE(F12):  {
 		/* F12 for screenshots; Doesn't make sense in the browser. */
 		char filename[128];
@@ -277,7 +290,7 @@ static void draw_frame() {
 #else
 	(void)elapsed;
 #endif
-	if(show_fps && n_elapsed > 0) {
+	if(dodebug && n_elapsed > 0) {
 		double sum = 0;
 		int i, n = n_elapsed > 0xFF ? 0xFF : n_elapsed; 
 		for(i = 0; i < n; i++) sum += frameTimes[i];
@@ -493,6 +506,7 @@ int main(int argc, char *argv[]) {
 		fclose(logfile);
     return 0;
 }
+
 /* EPX 2x scaling */
 #if EPX_SCALE
 static Bitmap *scale_epx_i(Bitmap *in, Bitmap *out) {

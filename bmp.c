@@ -47,6 +47,8 @@ FIXME: Not all functions that should respect IGNORE_ALPHA does so.
 #  define ABGR 0
 #endif
 
+#define TGA_SAVE_RLE    1 /* Use RLE when saving TGA files? */
+
 #include "bmp.h"
 
 #define FONT_WIDTH 96
@@ -209,9 +211,12 @@ Bitmap *bm_load(const char *filename) {
     return bmp;
 }
 
+static int is_tga_file(BmReader rd);
+
 static Bitmap *bm_load_bmp_rd(BmReader rd);
 static Bitmap *bm_load_gif_rd(BmReader rd);
 static Bitmap *bm_load_pcx_rd(BmReader rd);
+static Bitmap *bm_load_tga_rd(BmReader rd);
 #ifdef USEPNG
 static Bitmap *bm_load_png_fp(FILE *f);
 #endif
@@ -220,12 +225,16 @@ static Bitmap *bm_load_jpg_fp(FILE *f);
 #endif
 
 Bitmap *bm_load_fp(FILE *f) {
-    unsigned char magic[3];
+    unsigned char magic[4];
 
     long start = ftell(f),
-        isbmp = 0, ispng = 0, isjpg = 0, ispcx = 0, isgif = 0;
-    /* Tries to detect the type of file by looking at the first bytes. */
-    if(fread(magic, sizeof magic, 1, f) == 1) {
+        isbmp = 0, ispng = 0, isjpg = 0, ispcx = 0, isgif = 0, istga = 0;
+
+    BmReader rd = make_file_reader(f);
+    /* Tries to detect the type of file by looking at the first bytes.
+	http://www.astro.keele.ac.uk/oldusers/rno/Computing/File_magic.html
+	*/
+    if(rd.fread(magic, sizeof magic, 1, rd.data) == 1) {
         if(!memcmp(magic, "BM", 2))
             isbmp = 1;
         else if(!memcmp(magic, "GIF", 3))
@@ -234,12 +243,17 @@ Bitmap *bm_load_fp(FILE *f) {
             isjpg = 1;
         else if(magic[0] == 0x0A)
             ispcx = 1;
-        else
-            ispng = 1; /* Assume PNG by default; the other magic numbers are simpler */
+        else if(magic[0] == 0x89 && !memcmp(magic+1, "PNG", 3))
+            ispng = 1;
+		else {
+			/* Might be a TGA. TGA does not have a magic number :( */
+            rd.fseek(rd.data, start, SEEK_SET);
+			istga = is_tga_file(rd);
+		}
     } else {
         return NULL;
     }
-    fseek(f, start, SEEK_SET);
+    rd.fseek(rd.data, start, SEEK_SET);
 
 #ifdef USEJPG
     if(isjpg)
@@ -254,16 +268,16 @@ Bitmap *bm_load_fp(FILE *f) {
     (void)ispng;
 #endif
     if(isgif) {
-        BmReader rd = make_file_reader(f);
         return bm_load_gif_rd(rd);
     }
     if(ispcx) {
-        BmReader rd = make_file_reader(f);
         return bm_load_pcx_rd(rd);
     }
     if(isbmp) {
-        BmReader rd = make_file_reader(f);
         return bm_load_bmp_rd(rd);
+    }
+    if(istga) {
+        return bm_load_tga_rd(rd);
     }
     return NULL;
 }
@@ -371,6 +385,7 @@ error:
 static int bm_save_bmp(Bitmap *b, const char *fname);
 static int bm_save_gif(Bitmap *b, const char *fname);
 static int bm_save_pcx(Bitmap *b, const char *fname);
+static int bm_save_tga(Bitmap *b, const char *fname);
 #ifdef USEPNG
 static int bm_save_png(Bitmap *b, const char *fname);
 #endif
@@ -379,18 +394,17 @@ static int bm_save_jpg(Bitmap *b, const char *fname);
 #endif
 
 int bm_save(Bitmap *b, const char *fname) {
-    /* If the filename contains ".bmp" save as BMP,
-       if the filename contains ".jpg" save as JPG,
-        otherwise save as PNG */
+    /* Chooses the file type to save as based on the
+	extension in the filename */
     char *lname = strdup(fname), *c,
-        bmp = 0, jpg = 0, png = 0, pcx = 0, gif = 0;
+        jpg = 0, png = 0, pcx = 0, gif = 0, tga = 0;
     for(c = lname; *c; c++)
         *c = tolower(*c);
-    bmp = !!strstr(lname, ".bmp");
+    png = !!strstr(lname, ".png");
     pcx = !!strstr(lname, ".pcx");
     gif = !!strstr(lname, ".gif");
+    tga = !!strstr(lname, ".tga");
     jpg = !!strstr(lname, ".jpg") || !!strstr(lname, ".jpeg");
-    png = !bmp && !jpg && !pcx;
     free(lname);
 
 #ifdef USEPNG
@@ -409,6 +423,8 @@ int bm_save(Bitmap *b, const char *fname) {
         return bm_save_gif(b, fname);
     if(pcx)
         return bm_save_pcx(b, fname);
+    if(tga)
+        return bm_save_tga(b, fname);
     return bm_save_bmp(b, fname);
 }
 
@@ -2140,6 +2156,254 @@ static int bm_save_pcx(Bitmap *b, const char *fname) {
 
     fclose(f);
     return rv;
+}
+
+/*
+Targa (.TGA) support
+https://en.wikipedia.org/wiki/Truevision_TGA
+http://paulbourke.net/dataformats/tga/
+http://www.ludorg.net/amnesia/TGA_File_Format_Spec.html
+*/
+
+#pragma pack(push, 1)
+struct tga_header {
+    uint8_t     id_length;
+    uint8_t     map_type;
+    uint8_t     img_type;
+    struct {
+        uint16_t    index;
+        uint16_t    length;
+        uint8_t     size;
+    } map_spec;
+    struct {
+        uint16_t    xo, yo;
+        uint16_t    w, h;
+        uint8_t     bpp;
+        uint8_t     img_desc;
+    } img_spec;
+};
+#pragma pack(pop)
+
+static int is_tga_file(BmReader rd) {
+    /* TGA does not have a magic number in the header, so we have to take
+       an educated guess as to whether it looks like one from its header */
+    struct tga_header head;
+    long start = rd.ftell(rd.data), rv = 1;
+    if(rd.fread(&head, sizeof head, 1, rd.data) != 1) {
+        rv = 0;
+        goto done;
+    }
+
+    if(head.map_type != 0 && head.map_type != 1) {
+        rv = 0;
+        goto done;
+    }
+    static const uint8_t tga_types[] = {0,1,2,3,9,10,11, /* 32,33 */};
+    /* 32 and 33 seem complex and not widely supported, so I'm not going
+    to bother with them. */
+    int n, m = sizeof(tga_types)/ sizeof(tga_types[0]);
+    for(n = 0; n < m; n++) {
+        if(head.img_type == tga_types[n])
+            break;
+    }
+    if(n == m) {
+        rv = 0;
+    } else if(head.map_type) {
+        if(head.map_spec.size != 8
+            && head.map_spec.size != 15
+            && head.map_spec.size != 16
+            && head.map_spec.size != 24
+            && head.map_spec.size != 32) {
+            rv = 0;
+        }
+    } else if( head.img_spec.bpp != 8
+            && head.img_spec.bpp != 15
+            && head.img_spec.bpp != 16
+            && head.img_spec.bpp != 24
+            && head.img_spec.bpp != 32) {
+        rv = 0;
+    }
+done:
+    rd.fseek(rd.data, start, SEEK_SET);
+    return rv;
+}
+
+static int tga_decode_pixel(Bitmap *bmp, int x, int y, uint8_t bytes[], struct tga_header *head, uint8_t *color_map) {
+    int bpp = head->img_spec.bpp;
+    switch(head->img_type & 0x07) {
+        case 1: {
+            assert(head->img_spec.bpp == 8);
+            if(head->img_spec.bpp != 8) return 0;
+            if(!color_map) return 0;
+            int index = bytes[0];
+            bpp = head->map_spec.size;
+            bytes = &color_map[index * bpp / 8 - head->map_spec.index];
+        } /* intensional drop through */
+        case 2: {
+            switch(bpp) {
+            case 15:
+            case 16: {
+                uint16_t c16 = (bytes[1] << 8) | bytes[0];
+                uint8_t b = (c16 & 0x1F) << 3;
+                uint8_t g = ((c16 >> 5) & 0x1F) << 3;
+                uint8_t r = ((c16 >> 10) & 0x1F) << 3;
+                bm_set(bmp, x, y, bm_rgb(r, g, b));
+            } break;
+            case 24: bm_set(bmp, x, y, bm_rgb(bytes[2], bytes[1], bytes[0])); break;
+            case 32: bm_set(bmp, x, y, bm_rgba(bytes[2], bytes[1], bytes[0], bytes[3])); break;
+            }
+        } break;
+        case 3: {
+            assert(head->img_spec.bpp == 8);
+            if(head->img_spec.bpp != 8) return 0;
+            bm_set(bmp, x, y, bm_rgb(bytes[0], bytes[0], bytes[0]));
+        } break;
+        default: return 0; break;
+    }
+    return 1;
+}
+
+static Bitmap *bm_load_tga_rd(BmReader rd) {
+    struct tga_header head;
+    assert(sizeof(struct tga_header) == 18);
+
+    /* Just try to catch cases where is_tga_file() might fail... */
+    assert(is_tga_file(rd));
+
+    if(rd.fread(&head, sizeof head, 1, rd.data) != 1)
+        return NULL;
+
+    if(head.img_type == 0)
+        return bm_create(head.img_spec.w, head.img_spec.h);
+
+    if(head.id_length > 0) {
+        /* skip the ID field */
+        rd.fseek(rd.data, head.id_length, SEEK_CUR);
+    }
+
+    uint8_t bytes[4];
+    uint8_t *color_map = NULL;
+    Bitmap *bmp = bm_create(head.img_spec.w, head.img_spec.h);
+
+    if(head.map_type) {
+        color_map = calloc(head.map_spec.length, head.map_spec.size);
+        int r = rd.fread(color_map, head.map_spec.size / 8, head.map_spec.length, rd.data);
+        if(r != head.map_spec.length)
+            goto error;
+    }
+
+    int i = 0, j;
+    int np = head.img_spec.w * head.img_spec.h;
+
+    while(i < np) {
+
+        uint8_t nreps, rle = 0;
+        if(head.img_type & 0x08) {
+            if(rd.fread(&rle, 1, 1, rd.data) != 1) {
+                goto error;
+            }
+            nreps = (rle & 0x7F) + 1;
+        } else {
+            nreps = 0xFF;
+            if(i + nreps >= np)
+                nreps = np - i;
+        }
+
+        for (j = 0; j < nreps; j++) {
+            int x, y;
+            y = i / head.img_spec.w;
+            x = i % head.img_spec.w;
+
+            /* Bit 5 of img_desc determines the image origin (lower left or upper left): */
+            if(!(head.img_spec.img_desc & 0x20))
+                y = head.img_spec.h - 1 - y;
+
+            assert(x < bmp->w);
+            assert(y < bmp->h);
+            if(!(rle & 0x80) || ((rle & 0x80) && !j)) {
+                if(rd.fread(bytes, head.img_spec.bpp / 8, 1, rd.data) != 1)
+                    goto error;
+            }
+            if(!tga_decode_pixel(bmp, x, y, bytes, &head, color_map))
+                goto error;
+            i++;
+        }
+    }
+
+    if(color_map) free(color_map);
+    return bmp;
+error:
+    if(color_map) free(color_map);
+    if(bmp) bm_free(bmp);
+    return NULL;
+}
+
+static int bm_save_tga(Bitmap *b, const char *fname) {
+    /* Always saves as 24-bit TGA */
+    struct tga_header head;
+    FILE *f = fopen(fname, "wb");
+    if(!f) {
+        return 0;
+    }
+
+    memset(&head, 0, sizeof head);
+
+    head.img_type = (TGA_SAVE_RLE) ? 10 : 2;
+    head.img_spec.w = b->w;
+    head.img_spec.h = b->h;
+    head.img_spec.bpp = 24;
+
+    if(fwrite(&head, sizeof head, 1, f) != 1) {
+        fclose(f);
+        return 0;
+    }
+
+    int i = 0;
+    while(i < b->w * b->h) {
+        int x, y;
+        uint8_t bytes[1 + 3*128];
+        y = i / b->w;
+        y = b->h - 1 - y;
+        x = i % b->w;
+        unsigned int c = bm_get(b, x, y);
+#if TGA_SAVE_RLE
+        uint8_t n = 1;
+        size_t nb = 4;
+        bm_get_rgb(c, &bytes[3], &bytes[2], &bytes[1]);
+        if(x < b->w - 1 && bm_get(b, x + 1, y) == c) {
+            while(n < 128 && x + n < b->w && bm_get(b, x + n, y) == c)
+                n++;
+            bytes[0] = 0x80 | (n - 1);
+        } else {
+            while(n < 128 && x + n < b->w) {
+                c = bm_get(b, x + n, y);
+                if(x + n + 1 < b->w && bm_get(b, x + n + 1, y) == c)
+                    break;
+                bm_get_rgb(c, &bytes[nb + 2], &bytes[nb + 1], &bytes[nb + 0]);
+                nb += 3;
+                n++;
+            }
+            bytes[0] = (n - 1);
+        }
+        assert(n <= 128);
+        assert(nb <= sizeof bytes);
+        if(fwrite(&bytes, 1, nb, f) != nb) {
+            fclose(f);
+            return 0;
+        }
+        i += n;
+#else
+        bm_get_rgb(c, &bytes[2], &bytes[1], &bytes[0]);
+        if(fwrite(&bytes, 3, 1, f) != 1) {
+            fclose(f);
+            return 0;
+        }
+        i++;
+#endif
+    }
+
+    fclose(f);
+    return 1;
 }
 
 Bitmap *bm_copy(Bitmap *b) {
@@ -3994,6 +4258,10 @@ static unsigned char normal_bits[] = {
 void bm_set_font(Bitmap *b, BmFont *font) {
     if(b->font != font)
         b->font = font;
+}
+
+BmFont *bm_get_font(Bitmap *b) {
+    return b->font;
 }
 
 int bm_text_width(Bitmap *b, const char *s) {

@@ -60,6 +60,8 @@ extern char keys[SDL_NUM_SCANCODES];
 
 extern int quit;
 
+extern int show_debug();
+
 extern Bitmap *get_bmp(const char *filename);
 
 extern char *read_text_file(const char *fname);

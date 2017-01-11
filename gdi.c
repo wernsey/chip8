@@ -19,7 +19,9 @@
 #include <time.h>
 #include <assert.h>
 
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 
 #include "bmp.h"
@@ -32,7 +34,9 @@
 
 /* fflush() the log file after each call to rlog()?
 I only use it for those hard to debug crashes */
-#define FLUSH 0
+#ifndef FLUSH
+#  define FLUSH 0
+#endif
 
 static char szAppName[] = WINDOW_CAPTION;
 static char szTitle[]   = WINDOW_CAPTION " - GDI";
@@ -49,6 +53,14 @@ int mouse_x, mouse_y;
 static int mclick = 0, mdown = 0, mrelease = 0, mmove = 0;
 
 static int quit;
+
+static int show_fps = 0;
+static double frameTimes[256];
+static unsigned int n_elapsed = 0;
+
+int show_debug() {
+    return show_fps;
+}
 
 #if EPX_SCALE
 static Bitmap *scale_epx_i(Bitmap *in, Bitmap *out);
@@ -215,20 +227,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                 pressed_key = wParam;
             }
             break;
+        case WM_SYSKEYDOWN:
+            // TIL the F10 key doesn't go through the WM_KEYDOWN:
+            // https://msdn.microsoft.com/en-us/library/windows/desktop/gg153546(v=vs.85).aspx
+            if (wParam == VK_F10) {
+                show_fps = !show_fps;
+            } else return DefWindowProc(hwnd, message, wParam, lParam);
+            break;
         case WM_KEYDOWN:
-
-            //rlog("WM_KEYDOWN 0x%02X", wParam);
-
-            if (wParam < MAX_KEYS) {
+            if (ESCAPE_QUITS && VK_ESCAPE == wParam) {
+                DestroyWindow(hwnd);
+            } else if (wParam < MAX_KEYS) {
                 keys[wParam] = 1;
                 pressed_key = wParam | 0xFFFF0000;
-            }
-#if 1
-            if (VK_ESCAPE == wParam)
-                DestroyWindow(hwnd);
-#endif
+            }            
             break;
-
         case WM_KEYUP:
             if (wParam < MAX_KEYS) {
                 keys[wParam] = 0;
@@ -356,24 +369,24 @@ int APIENTRY WinMain(
 
             if(!render(elapsedSeconds)) {
                 DestroyWindow(hwnd);
+            } else {                
+                if(show_fps && n_elapsed > 0) {
+                    double sum = 0;
+                    int i, n = n_elapsed > 0xFF ? 0xFF : n_elapsed; 
+                    for(i = 0; i < n; i++) sum += frameTimes[i];
+                    double avg = sum / n;
+                    double fps = 1.0 / avg;
+                    BmFont * f = bm_get_font(screen);
+                    bm_reset_font(screen);
+                    bm_set_color(screen, bm_atoi("red"));
+                    bm_fillrect(screen, 0, 0, 50, 10);
+                    bm_set_color(screen, bm_atoi("yellow"));
+                    bm_printf(screen, 1, 1, "%3.2f", fps);
+                    bm_set_font(screen, f);
+                }
+                frameTimes[(n_elapsed++) & 0xFF] = elapsedSeconds;
             }
-
-            /*****************************/
-#if 0
-            bm_set_color(screen, 0);
-            bm_clear(screen);
-            bm_set_color(screen, 0xFFFFFF);
-            if(pressed_key) {
-                if(isprint(pressed_key))
-                    bm_printf(screen, 10, 10, "%d '%c'", pressed_key, pressed_key);
-                else
-                    bm_printf(screen, 10, 10, "%d", pressed_key);
-            }
-            if(mclick)
-                bm_printf(screen, 10, 18, "%d,%d", mouse_x, mouse_y);
-#endif
-            /*****************************/
-
+            
             InvalidateRect(hwnd, 0, TRUE);
             elapsedSeconds = 0.0;
             pressed_key = 0;
