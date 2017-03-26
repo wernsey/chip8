@@ -31,6 +31,8 @@
  * * <https://en.wikipedia.org/wiki/Truevision_TGA>
  * * <http://paulbourke.net/dataformats/tga/>
  * * <http://www.ludorg.net/amnesia/TGA_File_Format_Spec.html>
+ * * [X PixMap](https://en.wikipedia.org/wiki/X_PixMap)
+ * * <http://www.fileformat.info/format/xpm/egff.htm>
  *
  * License
  * -------
@@ -87,7 +89,7 @@ typedef struct bitmap {
  * ### Creating and Destroying bitmaps
  */
 
-/** `Bitmap *bm_create(int w, int h)`  \
+/**`Bitmap *bm_create(int w, int h)`  \
  * Creates a bitmap of the specified dimensions
  */
 Bitmap *bm_create(int w, int h);
@@ -98,17 +100,23 @@ Bitmap *bm_create(int w, int h);
 void bm_free(Bitmap *b);
 
 /** `Bitmap *bm_copy(Bitmap *b)`  \
- * Creates a duplicate of the bitmap structure.
- *
- * _Font information is not copied and must be set on the copy before
- * text can be drawn on it._
+ * Creates a duplicate of the bitmap structure `b`.
  */
 Bitmap *bm_copy(Bitmap *b);
 
-/** `Bitmap *bm_fromXbm(int w, int h, unsigned char *data)`  \
- * Creates a `Bitmap` object from XBM data.
+/** `Bitmap *bm_from_Xbm(int w, int h, unsigned char *data)`  \
+ * Creates a `Bitmap` object from [XBM data](https://en.wikipedia.org/wiki/X_BitMap).  \
+ * The XBM image is imported into a program through a `#include "include.xbm"` directive.  \
+ * The width `w` and height `h` are the `_width` and `_height` variables at the top of the XBM file.
+ * The `data` parameter is the `_bits` variable in the XBM file.
  */
-Bitmap *bm_fromXbm(int w, int h, unsigned char *data);
+Bitmap *bm_from_Xbm(int w, int h, unsigned char *data);
+
+/** `Bitmap *bm_from_Xpm(char *xpm[])`  \
+ * Creates a `Bitmap` object from [X PixMap](https://en.wikipedia.org/wiki/X_PixMap)
+ * data in a source file.
+ */
+Bitmap *bm_from_Xpm(char *xpm[]);
 
 /** `int bm_width(Bitmap *b)`  \
  * Retrieves the width of the bitmap `b`
@@ -631,11 +639,53 @@ int bm_puts(Bitmap *b, int x, int y, const char *text);
 int bm_printf(Bitmap *b, int x, int y, const char *fmt, ...);
 
 /**
+ * ### Raster Font Functions
+ * `bmp.h` has support for drawing text using raster fonts from any of the 
+ * supported file types.
+ *
+ * The characters in the bitmap must be arranged like this:
+ * ```
+ *  !"#$%&'()*+,-./
+ * 0123456789:;<=>?
+ * @ABCDEFGHIJKLMNO
+ * PQRSTUVWXYZ[\]^_
+ * `abcdefghijklmno
+ * pqrstuvwxyz{|}~ 
+ * ```
+ * The characters are in ASCII sequence, without the first 32 control characters. 
+ * The pixel width and hight of the individual characters is calculated by dividing
+ * the width and height of the bitmap by 16 and 6 respectively.
+ *
+ * Black (`#000000`) is used to indicate transparent pixels.
+ *
+ * `font.gif` is an example of an font that can be used in this way:  \
+ * ![sample font image](fonts/font.gif)  \
+ * The image is 128x48 pixels, so the individual characters are 8x8 pixels.
+ * (128/16=8 and 48/6=8)
+ */
+ 
+/** `BmFont *bm_make_ras_font(const char *file, int spacing)`  \
+ * Creates a raster font from a bitmap file named `file`.  \
+ * The file can be in any of the supported file formats.
+ * The `spacing` parameter determines. If it is zero, the width of the
+ * characters is used.  \
+ * A font created with this function must be freed by `bm_free_ras_font()`
+ * afterwards.  \
+ * The returned font's `type` will be set to `"RASTER_FONT"`
+ */
+BmFont *bm_make_ras_font(const char *file, int spacing);
+
+/** `void bm_free_ras_font(BmFont *font)`  \
+ * Frees a raster font previously created with `bm_make_ras_font()`.
+ */
+void bm_free_ras_font(BmFont *font);
+ 
+/**
  * ### XBM Font Functions
- * `bmp.h` has support for drawing text using bitmapped fonts built
- * into the library. The fonts are stored in XBM bitmaps that are
- * compiled into the program's executable rather than being loaded
- * at runtime.
+ * `bmp.h` has support for drawing text using XBM fonts built
+ * into the library. The XBM bitmaps can be compiled directly into 
+ * a program's executable rather than being loaded at runtime, which
+ * has the .
  */
 
 /** `BmFont *bm_make_xbm_font(const unsigned char *bits, int spacing)`  \
@@ -666,7 +716,7 @@ void bm_free_xbm_font(BmFont *font);
  *      operations to apply a `& 0x00FFFFFF` so that alpha values are ignored.  \
  *      It is not properly tested because I don't have any serious projects that
  *      depends on the alpha values at the moment.
- * - [] `bm_fill()` should _perhaps_ stop using `bm_picker()`
+ * - [x] `bm_fill()` should _perhaps_ stop using `bm_picker()`
  */
 
 #endif /* BMP_H */

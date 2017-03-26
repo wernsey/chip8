@@ -43,6 +43,33 @@ extern int render(double elapsedSeconds);
 #define KEY_F11 0x7A
 #define KEY_F12 0x7B
 
+#define KEY_a 0x41
+#define KEY_b 0x42
+#define KEY_c 0x43
+#define KEY_d 0x44
+#define KEY_e 0x45
+#define KEY_f 0x46
+#define KEY_g 0x47
+#define KEY_h 0x48
+#define KEY_i 0x49
+#define KEY_j 0x4A
+#define KEY_k 0x4B
+#define KEY_l 0x4C
+#define KEY_m 0x4D
+#define KEY_n 0x4E
+#define KEY_o 0x4F
+#define KEY_p 0x50
+#define KEY_q 0x51
+#define KEY_r 0x52
+#define KEY_s 0x53
+#define KEY_t 0x54
+#define KEY_u 0x55
+#define KEY_v 0x56
+#define KEY_w 0x57
+#define KEY_x 0x58
+#define KEY_y 0x59
+#define KEY_z 0x5A
+
 #define KCODE(x) KEY_ ## x
 
 extern Bitmap *screen;

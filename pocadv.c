@@ -280,26 +280,19 @@ static void draw_frame() {
 
     start = SDL_GetTicks();
 
-#if 0 /* If you need debug info on the screen : */
-    bm_set_color(screen, bm_atoi("black"));
-	bm_fillrect(screen, 10, 5, 100, 32);
-    bm_set_color(screen, bm_atoi("white"));
-    bm_printf(screen, 10, 8, "%d / %.2f", elapsed, deltaTime);
-    bm_printf(screen, 10, 16, "%s %d", lastEvent, finger_id);
-    bm_printf(screen, 10, 24, "%d %d", pressed_key, mclick);
-#else
-	(void)elapsed;
-#endif
 	if(dodebug && n_elapsed > 0) {
 		double sum = 0;
 		int i, n = n_elapsed > 0xFF ? 0xFF : n_elapsed; 
 		for(i = 0; i < n; i++) sum += frameTimes[i];
 		double avg = sum / n;
 		double fps = 1.0 / avg;
+		BmFont *save = bm_get_font(screen);
+		bm_reset_font(screen);
 		bm_set_color(screen, bm_atoi("red"));
 		bm_fillrect(screen, 0, 0, 50, 10);
 		bm_set_color(screen, bm_atoi("yellow"));
 		bm_printf(screen, 1, 1, "%3.2f", fps);
+		bm_set_font(screen, save);
 	}
 	frameTimes[(n_elapsed++) & 0xFF] = deltaTime;
 
