@@ -16,19 +16,19 @@
  * -------
  *
  *     MIT License
- *     
+ *
  *     Copyright (c) 2017 Werner Stoop
- *     
+ *
  *     Permission is hereby granted, free of charge, to any person obtaining a copy
  *     of this software and associated documentation files (the "Software"), to deal
  *     in the Software without restriction, including without limitation the rights
  *     to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  *     copies of the Software, and to permit persons to whom the Software is
  *     furnished to do so, subject to the following conditions:
- *     
+ *
  *     The above copyright notice and this permission notice shall be included in all
  *     copies or substantial portions of the Software.
- *     
+ *
  *     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  *     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  *     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -233,6 +233,24 @@ int bm_save(Bitmap *b, const char *fname);
  * rather than `bm_free()`.
  */
 Bitmap *bm_bind(int w, int h, unsigned char *data);
+
+/** `Bitmap *bm_bind_static(Bitmap *b, unsigned char *data, int w, int h)`  \
+ * Binds a `Bitmap` structure to an array of `w` &times; `h` &times; 4 bytes.
+ *
+ * The intended use case is to manipulate bitmaps in local variables in functions.
+ * This function does not allocate memory for the `Bitmap` structure, so the
+ * return value should _not_ be freed by `bm_free()`.
+ *
+ * The following example creates a temporary copy if a bitmap `orig` which will
+ * be removed automatically when the calling function returns, and does not require
+ * the overhead of `malloc()` and `free()` as the other Bitmap create/bind functions.
+ *
+ *    Bitmap b;
+ *    unsigned char buffer[WIDTH * HEIGHT * 4];
+ *    bm_bind_static(&b, buffer, WIDTH, HEIGHT);
+ *    memcpy(b.data, orig->data, WIDTH * HEIGHT * 4);
+ */
+Bitmap *bm_bind_static(Bitmap *b, unsigned char *data, int w, int h);
 
 /** `void bm_rebind(Bitmap *b, unsigned char *data)`  \
  * Changes the data referred to by a bitmap structure previously
@@ -450,7 +468,7 @@ void bm_blit_ex_fun(Bitmap *dst, int dx, int dy, int dw, int dh, Bitmap *src, in
 /** `void bm_rotate_blit(Bitmap *dst, int ox, int oy, Bitmap *src, int px, int py, double angle, double scale);`  \
  * Rotates a source bitmap `src` around a pivot point `px,py` and blits it onto a destination bitmap `dst`.
  *
- * The bitmap is positioned such that the point `px,py` on the source is at the offset `ox,oy` on the destination. 
+ * The bitmap is positioned such that the point `px,py` on the source is at the offset `ox,oy` on the destination.
  *
  * The `angle` is clockwise, in radians. The bitmap is also scaled by the factor `scale`.
  */
@@ -758,7 +776,7 @@ void bm_free_xbm_font(BmFont *font);
  *       It is not properly tested because I don't have any serious projects that
  *       depends on the alpha values at the moment.
  * - [x] `bm_fill()` should _perhaps_ stop using `bm_picker()`
- * - [ ] To consider: In `bm_rotate_blit()` perhaps check `u,v` against the `src` 
+ * - [ ] To consider: In `bm_rotate_blit()` perhaps check `u,v` against the `src`
  *       clipping rect instead.  \
  *       If I do this, I might have to do it for all blitting functions.
  *

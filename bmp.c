@@ -2557,8 +2557,12 @@ void bm_free(Bitmap *b) {
 
 Bitmap *bm_bind(int w, int h, unsigned char *data) {
     Bitmap *b = malloc(sizeof *b);
+	return bm_bind_static(b, data, w, h);
+}
 
-    b->w = w;
+
+Bitmap *bm_bind_static(Bitmap *b, unsigned char *data, int w, int h) {
+	b->w = w;
     b->h = h;
 
     b->clip.x0 = 0;
@@ -2572,8 +2576,7 @@ Bitmap *bm_bind(int w, int h, unsigned char *data) {
     bm_reset_font(b);
 
     bm_set_color(b, 0xFFFFFFFF);
-
-    return b;
+	return b;
 }
 
 void bm_rebind(Bitmap *b, unsigned char *data) {
@@ -3131,7 +3134,7 @@ void bm_rotate_blit(Bitmap *dst, int ox, int oy, Bitmap *src, int px, int py, do
     for(y = miny; y <= maxy; y++) {
         double u = rowu + minx * duRow;
         double v = rowv + minx * dvRow;
-        for(x = minx; x <= maxx; x++) {            
+        for(x = minx; x <= maxx; x++) {
             if(u >= 0 && u < src->w && v >= 0 && v < src->h) {
 #if IGNORE_ALPHA
                 unsigned int c = BM_GET(src, (int)u, (int)v) & 0x00FFFFFF;
