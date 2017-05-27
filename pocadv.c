@@ -112,7 +112,7 @@ static int handleKeys(SDLKey key) {
     }
 }
 
-char *read_text_file(const char *fname) {
+char *readfile(const char *fname) {
 	FILEOBJ *f;
 	long len,r;
 	char *str;

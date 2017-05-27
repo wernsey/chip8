@@ -1,3 +1,6 @@
+/*
+ * Bitmap manipulation functions. See `bmp.h` for details.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -48,6 +51,15 @@ FIXME: Not all functions that should respect IGNORE_ALPHA does so.
 #endif
 
 #define TGA_SAVE_RLE    1 /* Use RLE when saving TGA files? */
+
+/* Save transparent backgrounds when saving GIF?
+It used to be on by default, but it turned out to be less useful
+than I expected, and caused some confusion.
+Still, it is here if you need it
+*/
+#ifndef SAVE_GIF_TRANSPARENT
+#  define SAVE_GIF_TRANSPARENT 0
+#endif
 
 #include "bmp.h"
 
@@ -133,6 +145,9 @@ struct rgb_triplet {
 Bitmap *bm_create(int w, int h) {
     Bitmap *b = malloc(sizeof *b);
 
+    assert(w > 0);
+    assert(h > 0);
+
     b->w = w;
     b->h = h;
 
@@ -169,6 +184,47 @@ static BmReader make_file_reader(FILE *fp) {
     rd.fread = (size_t(*)(void*,size_t,size_t,void*))fread;
     rd.ftell = (long(*)(void* ))ftell;
     rd.fseek = (int(*)(void*,long,int))fseek;
+    return rd;
+}
+
+struct BmMemReader {
+    const unsigned char *buffer;
+    long len;
+    long pos;
+};
+
+static size_t memread(void *ptr, size_t size, size_t nobj, struct BmMemReader *mem) {
+    size = size * nobj;
+    if(mem->pos + size > mem->len) {
+        return 0;
+    }
+    memcpy(ptr, mem->buffer + mem->pos, size);
+    mem->pos += size;
+    return nobj;
+}
+static long memtell(struct BmMemReader *mem) {
+    return mem->pos;
+}
+static int memseek(struct BmMemReader *mem, long offset, int origin) {
+    switch(origin) {
+    case SEEK_SET: mem->pos = offset; break;
+    case SEEK_CUR: mem->pos += offset; break;
+    case SEEK_END: mem->pos = mem->len - offset; break;
+    }
+    if(mem->pos < 0 || mem->pos >= mem->len) {
+        mem->pos = 0;
+        return -1;
+    }
+    return 0;
+}
+
+static BmReader make_mem_reader(struct BmMemReader *mem) {
+    BmReader rd;
+    rd.data = mem;
+    mem->pos = 0;
+    rd.fread = (size_t(*)(void*,size_t,size_t,void*))memread;
+    rd.ftell = (long(*)(void* ))memtell;
+    rd.fseek = (int(*)(void*,long,int))memseek;
     return rd;
 }
 
@@ -279,6 +335,72 @@ Bitmap *bm_load_fp(FILE *f) {
     }
     return NULL;
 }
+
+Bitmap *bm_load_mem(const unsigned char *buffer, long len) {
+    unsigned char magic[4];
+
+    long isbmp = 0, ispng = 0, isjpg = 0, ispcx = 0, isgif = 0, istga = 0;
+
+    struct BmMemReader memr;
+    memr.buffer = buffer;
+    memr.len = len;
+
+    BmReader rd = make_mem_reader(&memr);
+    /* Tries to detect the type of file by looking at the first bytes.
+	http://www.astro.keele.ac.uk/oldusers/rno/Computing/File_magic.html
+	*/
+    if(rd.fread(magic, sizeof magic, 1, rd.data) == 1) {
+        if(!memcmp(magic, "BM", 2))
+            isbmp = 1;
+        else if(!memcmp(magic, "GIF", 3))
+            isgif = 1;
+        else if(magic[0] == 0xFF && magic[1] == 0xD8)
+            isjpg = 1;
+        else if(magic[0] == 0x0A)
+            ispcx = 1;
+        else if(magic[0] == 0x89 && !memcmp(magic+1, "PNG", 3))
+            ispng = 1;
+		else {
+			/* Might be a TGA. TGA does not have a magic number :( */
+            rd.fseek(rd.data, 0, SEEK_SET);
+			istga = is_tga_file(rd);
+		}
+    } else {
+        return NULL;
+    }
+    rd.fseek(rd.data, 0, SEEK_SET);
+
+#ifdef USEJPG
+    if(isjpg) {
+        /* TODO: JPG support */
+        return NULL;
+    }
+#else
+    (void)isjpg;
+#endif
+#ifdef USEPNG
+    if(ispng) {
+        /* TODO: PNG support */
+        return NULL;
+    }
+#else
+    (void)ispng;
+#endif
+    if(isgif) {
+        return bm_load_gif_rd(rd);
+    }
+    if(ispcx) {
+        return bm_load_pcx_rd(rd);
+    }
+    if(isbmp) {
+        return bm_load_bmp_rd(rd);
+    }
+    if(istga) {
+        return bm_load_tga_rd(rd);
+    }
+    return NULL;
+}
+
 
 static Bitmap *bm_load_bmp_rd(BmReader rd) {
     struct bmpfile_magic magic;
@@ -1886,12 +2008,16 @@ static int bm_save_gif(Bitmap *b, const char *fname) {
     gce.block_size = 4;
     gce.fields = 0;
     gce.delay = 0;
+#if SAVE_GIF_TRANSPARENT
     if(bg >= 0) {
         gce.fields |= 0x01;
         gce.trans_index = bg;
     } else {
         gce.trans_index = 0;
     }
+#else
+    gce.trans_index = 0;
+#endif
     gce.terminator = 0x00;
 
     fputc(0x21, f);
@@ -2416,6 +2542,13 @@ Bitmap *bm_copy(Bitmap *b) {
     return out;
 }
 
+Bitmap *bm_crop(Bitmap *b, int x, int y, int w, int h) {
+    Bitmap *o = bm_create(w, h);
+    if(!o) return NULL;
+    bm_blit(o, 0, 0, b, x, y, w, h);
+    return o;
+}
+
 void bm_free(Bitmap *b) {
     if(!b) return;
     if(b->data) free(b->data);
@@ -2931,6 +3064,87 @@ void bm_blit_ex_fun(Bitmap *dst, int dx, int dy, int dw, int dh, Bitmap *src, in
             ynum -= dh;
             sy++;
         }
+    }
+}
+
+void bm_rotate_blit(Bitmap *dst, int ox, int oy, Bitmap *src, int px, int py, double angle, double scale) {
+    /*
+    "Fast Bitmap Rotation and Scaling" By Steven Mortimer, Dr Dobbs' Journal, July 01, 2001
+    http://www.drdobbs.com/architecture-and-design/fast-bitmap-rotation-and-scaling/184416337
+    See also http://www.efg2.com/Lab/ImageProcessing/RotateScanline.htm
+    */
+
+#if IGNORE_ALPHA
+    unsigned int maskc = bm_get_color(src) & 0x00FFFFFF;
+#else
+    unsigned int maskc = bm_get_color(src);
+#endif
+    int x,y;
+
+    int minx = dst->clip.x1, miny = dst->clip.y1;
+    int maxx = dst->clip.x0, maxy = dst->clip.y0;
+
+    double sinAngle = sin(angle);
+    double cosAngle = cos(angle);
+
+    double dx, dy;
+    /* Compute the position of where each corner on the source bitmap
+    will be on the destination to get a bounding box for scanning */
+    dx = -cosAngle * px * scale + sinAngle * py * scale + ox;
+    dy = -sinAngle * px * scale - cosAngle * py * scale + oy;
+    if(dx < minx) minx = dx; if(dx > maxx) maxx = dx;
+    if(dy < miny) miny = dy; if(dy > maxy) maxy = dy;
+
+    dx = cosAngle * (src->w - px) * scale + sinAngle * py * scale + ox;
+    dy = sinAngle * (src->w - px) * scale - cosAngle * py * scale + oy;
+    if(dx < minx) minx = dx; if(dx > maxx) maxx = dx;
+    if(dy < miny) miny = dy; if(dy > maxy) maxy = dy;
+
+    dx = cosAngle * (src->w - px) * scale - sinAngle * (src->h - py) * scale + ox;
+    dy = sinAngle * (src->w - px) * scale + cosAngle * (src->h - py) * scale + oy;
+    if(dx < minx) minx = dx; if(dx > maxx) maxx = dx;
+    if(dy < miny) miny = dy; if(dy > maxy) maxy = dy;
+
+    dx = -cosAngle * px * scale - sinAngle * (src->h - py) * scale + ox;
+    dy = -sinAngle * px * scale + cosAngle * (src->h - py) * scale + oy;
+    if(dx < minx) minx = dx; if(dx > maxx) maxx = dx;
+    if(dy < miny) miny = dy; if(dy > maxy) maxy = dy;
+
+    /* Clipping */
+    if(minx < dst->clip.x0) minx = dst->clip.x0;
+    if(maxx > dst->clip.x1 - 1) maxx = dst->clip.x1 - 1;
+    if(miny < dst->clip.y0) miny = dst->clip.y0;
+    if(maxy > dst->clip.y1 - 1) maxy = dst->clip.y1 - 1;
+
+    double dvCol = cos(angle) / scale;
+    double duCol = sin(angle) / scale;
+
+    double duRow = dvCol;
+    double dvRow = -duCol;
+
+    double startu = px - (ox * dvCol + oy * duCol);
+    double startv = py - (ox * dvRow + oy * duRow);
+
+    double rowu = startu + miny * duCol;
+    double rowv = startv + miny * dvCol;
+
+    for(y = miny; y <= maxy; y++) {
+        double u = rowu + minx * duRow;
+        double v = rowv + minx * dvRow;
+        for(x = minx; x <= maxx; x++) {            
+            if(u >= 0 && u < src->w && v >= 0 && v < src->h) {
+#if IGNORE_ALPHA
+                unsigned int c = BM_GET(src, (int)u, (int)v) & 0x00FFFFFF;
+#else
+                unsigned int c = BM_GET(src, (int)u, (int)v);
+#endif
+                if(c != maskc) BM_SET(dst, x, y, c);
+            }
+            u += duRow;
+            v += dvRow;
+        }
+        rowu += duCol;
+        rowv += dvCol;
     }
 }
 
@@ -4330,8 +4544,8 @@ static int rf_puts(Bitmap *b, int x, int y, const char *s) {
 			int c = *s;
 			c -= 32;
 			int sy = (c >> 4) * data->height;
-			int sx = (c & 0xF) * data->width;			
-			bm_maskedblit(b, x, y, data->bmp, sx, sy, data->width, data->height);			
+			int sx = (c & 0xF) * data->width;
+			bm_maskedblit(b, x, y, data->bmp, sx, sy, data->width, data->height);
             x += data->spacing;
         }
 		s++;
@@ -4374,7 +4588,7 @@ BmFont *bm_make_ras_font(const char *file, int spacing) {
 }
 
 void bm_free_ras_font(BmFont *font) {
-	if(!font || strcmp(font->type, "RASTER_FONT")) 
+	if(!font || strcmp(font->type, "RASTER_FONT"))
 		return;
 	bm_free(((RasterFontData*)font->data)->bmp);
 	free(font->data);

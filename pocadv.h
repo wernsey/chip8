@@ -64,7 +64,7 @@ extern int show_debug();
 
 extern Bitmap *get_bmp(const char *filename);
 
-extern char *read_text_file(const char *fname);
+extern char *readfile(const char *fname);
 
 extern void rlog(const char *fmt, ...);
 

@@ -19,6 +19,7 @@ extern int render(double elapsedSeconds);
 #define KEY_RIGHT   0x27
 #define KEY_DOWN    0x28
 
+#define KEY_SHIFT   0x10
 #define KEY_LSHIFT  0xA0
 #define KEY_RSHIFT  0xA1
 #define KEY_CTRL    0x11
