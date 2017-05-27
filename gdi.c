@@ -363,8 +363,6 @@ int APIENTRY WinMain(
         if(quit) break;
 
         Sleep(1);
-        endTime = clock();
-        elapsedSeconds += (double)(endTime - startTime) / CLOCKS_PER_SEC;
         if(elapsedSeconds > 1.0/FPS) {
 
             if(!render(elapsedSeconds)) {
@@ -394,6 +392,8 @@ int APIENTRY WinMain(
 			mmove = 0;
             mclick = 0;
         }
+        endTime = clock();
+        elapsedSeconds += (double)(endTime - startTime) / CLOCKS_PER_SEC;
     }
     rlog("%s","GDI Framework: Main loop stopped");
     rlog("%s","Application Done!\n");
