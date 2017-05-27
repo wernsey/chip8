@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <math.h>
 #include <time.h>
 #include <unistd.h>
 #include <errno.h>
@@ -170,22 +171,51 @@ static unsigned char oldscreen_buffer[SCREEN_WIDTH * SCREEN_HEIGHT * 4];
 static unsigned char plotscreen_buffer[SCREEN_WIDTH * SCREEN_HEIGHT * 4];
 #endif
 #ifdef CRT_NOISE
-static unsigned int noise(int x, int y, int level, unsigned int col_in) {
-	unsigned char R, G, B;
-	bm_get_rgb(col_in, &R, &G, &B);
-	int val = ((((x * SCREEN_WIDTH + y) * 214013 + 2531011 ) >> 16) & 0x7) - 4;
-	int iR = R + val, iG = G + val, iB = B + val;
-	if(iR > 0xFF) iR = 0xFF; if(iR < 0) iR = 0;
-	if(iG > 0xFF) iG = 0xFF; if(iG < 0) iG = 0;
-	if(iB > 0xFF) iB = 0xFF; if(iB < 0) iB = 0;
-	return bm_rgb(iR, iG, iB);
+static unsigned int noise(int x, int y, unsigned int col_in) {
+    unsigned char R, G, B;
+    bm_get_rgb(col_in, &R, &G, &B);
+    /*
+    This noise function is not very good. It is based on one of the LGCs on
+    the Wikipedia page.
+    https://en.wikipedia.org/wiki/Linear_congruential_generator
+    */
+    //int val = ((((y + x * 134775813) * 214013  + 2531011  ) >> 16) & 0xF) - 8;
+    int val = ((((x + y * SCREEN_WIDTH) * 214013  + 2531011  ) >> 16) & 0x7) - 3;
+    int iR = R + val, iG = G + val, iB = B + val;
+    if(iR > 0xFF) iR = 0xFF; if(iR < 0) iR = 0;
+    if(iG > 0xFF) iG = 0xFF; if(iG < 0) iG = 0;
+    if(iB > 0xFF) iB = 0xFF; if(iB < 0) iB = 0;
+    return bm_rgb(iR, iG, iB);
 }
 #endif
 
+static unsigned char chip8_screen_buffer[SCREEN_WIDTH * SCREEN_HEIGHT * 4];
+
+static void chip8_to_bmp(Bitmap *sbmp) {
+    int x, y, w, h;
+
+    c8_resolution(&w, &h);
+
+    assert(w <= SCREEN_WIDTH);
+    assert(h <= SCREEN_HEIGHT);
+    bm_bind_static(sbmp, chip8_screen_buffer, w, h);
+
+    for(y = 0; y < h; y++) {
+        for(x = 0; x < w; x++) {
+            unsigned int c = c8_get_pixel(x,y) ? fg_color : bg_color;
+            bm_set(sbmp, x, y, c);
+        }
+    }
+}
+
 static void draw_screen() {
-    int x, y, w, h, c, ox, oy;
-    int hi_res = c8_resolution(&w, &h);
-    bm_set_color(screen, 0x202020);
+    int w, h;
+
+    Bitmap chip8_screen;
+
+    chip8_to_bmp(&chip8_screen);
+    w = chip8_screen.w;
+    h = chip8_screen.h;
 
 #ifdef CRT_BLUR
     Bitmap plotscreen;
@@ -194,47 +224,50 @@ static void draw_screen() {
     Bitmap oldscreen;
     bm_bind_static(&oldscreen, oldscreen_buffer, SCREEN_WIDTH, SCREEN_HEIGHT);
     memcpy(oldscreen.data, plotscreen.data, SCREEN_WIDTH * SCREEN_HEIGHT * 4);
-#endif
 
-    bm_clear(screen);
-    if(!hi_res) {
-        for(y = 0; y < h; y++) {
-            for(x = 0; x < w; x++) {
-                c = c8_get_pixel(x,y)?fg_color:bg_color;
-                ox = x << 1; oy = y << 1;
-                bm_set(screen, ox, oy, c);
-                bm_set(screen, ox+1, oy, c);
-                bm_set(screen, ox, oy+1, c);
-                bm_set(screen, ox+1, oy+1, c);
-
-            }
-        }
-    } else {
-        for(y = 0; y < h; y++) {
-            for(x = 0; x < w; x++) {
-                c = c8_get_pixel(x,y)?fg_color:bg_color;
-                bm_set(screen, x, y, c);
-            }
-        }
-    }
-#ifdef CRT_BLUR
     bm_smooth(&oldscreen);
     bm_smooth(&oldscreen);
+    bm_blit_ex(screen, 0, 0, screen->w, screen->h, &chip8_screen, 0, 0, w, h, 0);
     add_bitmaps(screen, &oldscreen);
+#else
+    bm_blit_ex(screen, 0, 0, screen->w, screen->h, &chip8_screen, 0, 0, w, h, 0);
 #endif
+
 #ifdef CRT_NOISE
-	for(y = 0; y < screen->h - 24; y++) {
+    int x, y;
+    for(y = 0; y < screen->h; y++) {
         for(x = 0; x < screen->w; x++) {
-			c = bm_get(screen, x, y);
-			c = noise(x, y, 10, c);
-			bm_set(screen, x, y, c);
-		}
-	 }
+            unsigned int c = bm_get(screen, x, y);
+            c = noise(x, y, c);
+            bm_set(screen, x, y, c);
+        }
+     }
 #endif
 
 #ifdef CRT_BLUR
-	memcpy(plotscreen.data, screen->data, SCREEN_WIDTH * SCREEN_HEIGHT * 4);
+    memcpy(plotscreen.data, screen->data, SCREEN_WIDTH * SCREEN_HEIGHT * 4);
 #endif
+}
+
+void bm_blit_blend(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, int w, int h);
+
+void draw_hud() {
+    int i;
+    Bitmap hud;
+    static unsigned char hud_buffer[128 * 24 * 4];
+    bm_bind_static(&hud, hud_buffer, 128, 24);
+
+    uint16_t pc = c8_get_pc();
+    uint16_t opcode = c8_opcode(pc);
+    bm_set_color(&hud, 0x202020);
+    bm_clear(&hud);
+    bm_set_color(&hud, 0xFFFFFF);
+    bm_printf(&hud, 1, 0, "%03X %04X", pc, opcode);
+    for(i = 0; i < 16; i++) {
+        bm_printf(&hud, (i & 0x07) * 16, (i >> 3) * 8 + 8, "%02X", c8_get_reg(i));
+    }
+
+    bm_blit_blend(screen, 0, screen->h - 24, &hud, 0, 0, hud.w, hud.h);
 }
 
 int render(double elapsedSeconds) {
@@ -284,8 +317,8 @@ int render(double elapsedSeconds) {
             F8 resumes
         */
         if(keys[KCODE(F8)]) {
-            bm_set_color(screen, 0x202020);
-            bm_fillrect(screen, 0, screen->h - 24, screen->w, screen->h);
+            // bm_set_color(screen, 0x202020);
+            // bm_fillrect(screen, 0, screen->h - 24, screen->w, screen->h);
             running = 1;
             return 1;
         }
@@ -301,16 +334,100 @@ int render(double elapsedSeconds) {
             keys[KCODE(F6)] = 0;
         }
 
-        uint16_t pc = c8_get_pc();
-        uint16_t opcode = c8_opcode(pc);
-        bm_set_color(screen, 0x202020);
-        bm_fillrect(screen, 0, screen->h - 24, screen->w, screen->h);
-        bm_set_color(screen, 0xFFFFFF);
-        bm_printf(screen, 1, screen->h - 24, "%03X %04X", pc, opcode);
-        for(i = 0; i < 16; i++) {
-            bm_printf(screen, (i & 0x07) * 16, (i >> 3) * 8 + screen->h - 16, "%02X", c8_get_reg(i));
-        }
+        draw_screen();
+        draw_hud();
     }
 
     return 1;
+}
+
+
+void bm_blit_blend(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, int w, int h) {
+    int x,y, i, j;
+
+    if(sx < 0) {
+        int delta = -sx;
+        sx = 0;
+        dx += delta;
+        w -= delta;
+    }
+
+    if(dx < dst->clip.x0) {
+        int delta = dst->clip.x0 - dx;
+        sx += delta;
+        w -= delta;
+        dx = dst->clip.x0;
+    }
+
+    if(sx + w > src->w) {
+        int delta = sx + w - src->w;
+        w -= delta;
+    }
+
+    if(dx + w > dst->clip.x1) {
+        int delta = dx + w - dst->clip.x1;
+        w -= delta;
+    }
+
+    if(sy < 0) {
+        int delta = -sy;
+        sy = 0;
+        dy += delta;
+        h -= delta;
+    }
+
+    if(dy < dst->clip.y0) {
+        int delta = dst->clip.y0 - dy;
+        sy += delta;
+        h -= delta;
+        dy = dst->clip.y0;
+    }
+
+    if(sy + h > src->h) {
+        int delta = sy + h - src->h;
+        h -= delta;
+    }
+
+    if(dy + h > dst->clip.y1) {
+        int delta = dy + h - dst->clip.y1;
+        h -= delta;
+    }
+
+    if(w <= 0 || h <= 0)
+        return;
+    if(dx >= dst->clip.x1 || dx + w < dst->clip.x0)
+        return;
+    if(dy >= dst->clip.y1 || dy + h < dst->clip.y0)
+        return;
+    if(sx >= src->w || sx + w < 0)
+        return;
+    if(sy >= src->h || sy + h < 0)
+        return;
+
+    if(sx + w > src->w) {
+        int delta = sx + w - src->w;
+        w -= delta;
+    }
+
+    if(sy + h > src->h) {
+        int delta = sy + h - src->h;
+        h -= delta;
+    }
+
+    assert(dx >= 0 && dx + w <= dst->clip.x1);
+    assert(dy >= 0 && dy + h <= dst->clip.y1);
+    assert(sx >= 0 && sx + w <= src->w);
+    assert(sy >= 0 && sy + h <= src->h);
+
+    j = sy;
+    for(y = dy; y < dy + h; y++) {
+        i = sx;
+        for(x = dx; x < dx + w; x++) {
+            unsigned int c1 = (bm_get(src, i, j) >> 1) & 0x7F7F7F;
+            unsigned int c2 = (bm_get(dst, x, y) >> 1) & 0x7F7F7F;
+            bm_set(dst, x, y, c1 + c2);
+            i++;
+        }
+        j++;
+    }
 }

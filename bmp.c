@@ -286,8 +286,8 @@ Bitmap *bm_load_fp(FILE *f) {
 
     BmReader rd = make_file_reader(f);
     /* Tries to detect the type of file by looking at the first bytes.
-	http://www.astro.keele.ac.uk/oldusers/rno/Computing/File_magic.html
-	*/
+    http://www.astro.keele.ac.uk/oldusers/rno/Computing/File_magic.html
+    */
     if(rd.fread(magic, sizeof magic, 1, rd.data) == 1) {
         if(!memcmp(magic, "BM", 2))
             isbmp = 1;
@@ -299,11 +299,11 @@ Bitmap *bm_load_fp(FILE *f) {
             ispcx = 1;
         else if(magic[0] == 0x89 && !memcmp(magic+1, "PNG", 3))
             ispng = 1;
-		else {
-			/* Might be a TGA. TGA does not have a magic number :( */
+        else {
+            /* Might be a TGA. TGA does not have a magic number :( */
             rd.fseek(rd.data, start, SEEK_SET);
-			istga = is_tga_file(rd);
-		}
+            istga = is_tga_file(rd);
+        }
     } else {
         return NULL;
     }
@@ -347,8 +347,8 @@ Bitmap *bm_load_mem(const unsigned char *buffer, long len) {
 
     BmReader rd = make_mem_reader(&memr);
     /* Tries to detect the type of file by looking at the first bytes.
-	http://www.astro.keele.ac.uk/oldusers/rno/Computing/File_magic.html
-	*/
+    http://www.astro.keele.ac.uk/oldusers/rno/Computing/File_magic.html
+    */
     if(rd.fread(magic, sizeof magic, 1, rd.data) == 1) {
         if(!memcmp(magic, "BM", 2))
             isbmp = 1;
@@ -360,11 +360,11 @@ Bitmap *bm_load_mem(const unsigned char *buffer, long len) {
             ispcx = 1;
         else if(magic[0] == 0x89 && !memcmp(magic+1, "PNG", 3))
             ispng = 1;
-		else {
-			/* Might be a TGA. TGA does not have a magic number :( */
+        else {
+            /* Might be a TGA. TGA does not have a magic number :( */
             rd.fseek(rd.data, 0, SEEK_SET);
-			istga = is_tga_file(rd);
-		}
+            istga = is_tga_file(rd);
+        }
     } else {
         return NULL;
     }
@@ -515,7 +515,7 @@ static int bm_save_jpg(Bitmap *b, const char *fname);
 
 int bm_save(Bitmap *b, const char *fname) {
     /* Chooses the file type to save as based on the
-	extension in the filename */
+    extension in the filename */
     char *lname = strdup(fname), *c,
         jpg = 0, png = 0, pcx = 0, gif = 0, tga = 0;
     for(c = lname; *c; c++)
@@ -1930,7 +1930,7 @@ static int bm_save_gif(Bitmap *b, const char *fname) {
         gif.lsd.fields |= 0x07;
 
         /* color quantization - see bm_save_pcx() */
-		/* FIXME: The color quantization shouldn't depend on rand() :( */
+        /* FIXME: The color quantization shouldn't depend on rand() :( */
         nc = 0;
         for(nc = 0; nc < 256; nc++) {
             int c = bm_get(b, rand()%b->w, rand()%b->h);
@@ -2224,11 +2224,11 @@ static int bm_save_pcx(Bitmap *b, const char *fname) {
     if(ncolors < 0) {
         /* This is my poor man's color quantization hack:
             Sample random pixels and generate a palette from them.
-			FIXME: The color quantization shouldn't depend on rand() :(
-			Rosettacode has a nice color quantization implementation.
-			http://rosettacode.org/wiki/Color_quantization#C
-			http://rosettacode.org/wiki/Color_quantization/C
-		*/
+            FIXME: The color quantization shouldn't depend on rand() :(
+            Rosettacode has a nice color quantization implementation.
+            http://rosettacode.org/wiki/Color_quantization#C
+            http://rosettacode.org/wiki/Color_quantization/C
+        */
         unsigned int palette[256], q;
         ncolors = 0;
         for(ncolors = 0; ncolors < 256; ncolors++) {
@@ -2557,12 +2557,12 @@ void bm_free(Bitmap *b) {
 
 Bitmap *bm_bind(int w, int h, unsigned char *data) {
     Bitmap *b = malloc(sizeof *b);
-	return bm_bind_static(b, data, w, h);
+    return bm_bind_static(b, data, w, h);
 }
 
 
 Bitmap *bm_bind_static(Bitmap *b, unsigned char *data, int w, int h) {
-	b->w = w;
+    b->w = w;
     b->h = h;
 
     b->clip.x0 = 0;
@@ -2576,7 +2576,7 @@ Bitmap *bm_bind_static(Bitmap *b, unsigned char *data, int w, int h) {
     bm_reset_font(b);
 
     bm_set_color(b, 0xFFFFFFFF);
-	return b;
+    return b;
 }
 
 void bm_rebind(Bitmap *b, unsigned char *data) {
@@ -2797,7 +2797,7 @@ void bm_blit(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, int w, in
     for(y = dy; y < dy + h; y++) {
         i = sx;
         for(x = dx; x < dx + w; x++) {
-            int c = BM_GET(src, i, j);
+            unsigned int c = BM_GET(src, i, j);
             BM_SET(dst, x, y, c);
             i++;
         }
@@ -4329,7 +4329,7 @@ static unsigned int col_dist_sq(unsigned int color1, unsigned int color2) {
 
 static unsigned int closest_color(unsigned int c, unsigned int palette[], size_t n) {
     int i, m = 0;
-	unsigned int md = col_dist_sq(c, palette[m]);
+    unsigned int md = col_dist_sq(c, palette[m]);
     for(i = 1; i < n; i++) {
         unsigned int d = col_dist_sq(c, palette[i]);
         if(d < md) {
@@ -4523,79 +4523,79 @@ int bm_printf(Bitmap *b, int x, int y, const char *fmt, ...) {
 /** RASTER FONT FUNCTIONS ******************************************************/
 
 typedef struct {
-	Bitmap *bmp;
-	int width;
-	int height;
-	int spacing;
+    Bitmap *bmp;
+    int width;
+    int height;
+    int spacing;
 } RasterFontData;
 
 static int rf_puts(Bitmap *b, int x, int y, const char *s) {
-	assert(!strcmp(b->font->type, "RASTER_FONT"));
-	RasterFontData *data = b->font->data;
-	int x0 = x;
-	while(*s) {
-		if(*s == '\n') {
-			y += data->height;
-			x = x0;
-		} else if(*s == '\b') {
-			if(x > x0) x -= data->spacing;
-		} else if(*s == '\r') {
-			x = x0;
-		} else if(*s == '\t') {
-			x += 4 * data->spacing;
-		} else {
-			int c = *s;
-			c -= 32;
-			int sy = (c >> 4) * data->height;
-			int sx = (c & 0xF) * data->width;
-			bm_maskedblit(b, x, y, data->bmp, sx, sy, data->width, data->height);
+    assert(!strcmp(b->font->type, "RASTER_FONT"));
+    RasterFontData *data = b->font->data;
+    int x0 = x;
+    while(*s) {
+        if(*s == '\n') {
+            y += data->height;
+            x = x0;
+        } else if(*s == '\b') {
+            if(x > x0) x -= data->spacing;
+        } else if(*s == '\r') {
+            x = x0;
+        } else if(*s == '\t') {
+            x += 4 * data->spacing;
+        } else {
+            int c = *s;
+            c -= 32;
+            int sy = (c >> 4) * data->height;
+            int sx = (c & 0xF) * data->width;
+            bm_maskedblit(b, x, y, data->bmp, sx, sy, data->width, data->height);
             x += data->spacing;
         }
-		s++;
-	}
-	return 1;
+        s++;
+    }
+    return 1;
 }
 
 static int rf_width(struct bitmap_font *font) {
-	assert(!strcmp(font->type, "RASTER_FONT"));
-	RasterFontData *data = font->data;
+    assert(!strcmp(font->type, "RASTER_FONT"));
+    RasterFontData *data = font->data;
     return data->width;
 }
 static int rf_height(struct bitmap_font *font) {
     assert(!strcmp(font->type, "RASTER_FONT"));
-	RasterFontData *data = font->data;
-	return data->height;
+    RasterFontData *data = font->data;
+    return data->height;
 }
 
 BmFont *bm_make_ras_font(const char *file, int spacing) {
-	BmFont *font = malloc(sizeof *font);
-	font->type = "RASTER_FONT";
-	font->puts = rf_puts;
-	font->width = rf_width;
-	font->height = rf_height;
-	RasterFontData *data = malloc(sizeof *data);
-	data->bmp = bm_load(file);
-	if(!data->bmp) {
-		free(data);
-		free(font);
-		return NULL;
-	}
-	bm_set_color(data->bmp, 0);
-	/* The width/height depends on the bitmap being laid out as prescribed */
-	data->width = data->bmp->w / 16;
-	data->height = data->bmp->h / 6;
-	if(spacing <= 0) spacing = data->width;
-	data->spacing = spacing;
-	font->data = data;
-	return font;
+    BmFont *font = malloc(sizeof *font);
+    font->type = "RASTER_FONT";
+    font->puts = rf_puts;
+    font->width = rf_width;
+    font->height = rf_height;
+    RasterFontData *data = malloc(sizeof *data);
+    data->bmp = bm_load(file);
+    if(!data->bmp) {
+        free(data);
+        free(font);
+        return NULL;
+    }
+    bm_set_color(data->bmp, 0);
+    /* The width/height depends on the bitmap being laid out as prescribed */
+    data->width = data->bmp->w / 16;
+    data->height = data->bmp->h / 6;
+    if(spacing <= 0) spacing = data->width;
+    data->spacing = spacing;
+    font->data = data;
+    return font;
 }
 
 void bm_free_ras_font(BmFont *font) {
-	if(!font || strcmp(font->type, "RASTER_FONT"))
-		return;
-	bm_free(((RasterFontData*)font->data)->bmp);
-	free(font->data);
-	free(font);
+    if(!font || strcmp(font->type, "RASTER_FONT"))
+        return;
+    bm_free(((RasterFontData*)font->data)->bmp);
+    free(font->data);
+    free(font);
 }
 
 /** XBM FONT FUNCTIONS *********************************************************/
@@ -4684,7 +4684,7 @@ static void xbmf_putc(Bitmap *b, const unsigned char *xbm_bits, int x, int y, un
     if(c < 32 || c > 127)
         return;
 
-	c -= 32;
+    c -= 32;
     frow = (c >> 4);
     fcol = c & 0xF;
     byte = frow * XBM_FONT_WIDTH + fcol;
