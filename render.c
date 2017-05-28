@@ -171,16 +171,24 @@ static unsigned char oldscreen_buffer[SCREEN_WIDTH * SCREEN_HEIGHT * 4];
 static unsigned char plotscreen_buffer[SCREEN_WIDTH * SCREEN_HEIGHT * 4];
 #endif
 #ifdef CRT_NOISE
+static long nz_seed = 0L;
+static long nz_rand() {
+    nz_seed = nz_seed * 1103515245L + 12345L;
+    return (nz_seed >> 16) & 0x7FFF;
+}
+static void nz_srand(long seed) {
+    nz_seed = seed;
+}
 static unsigned int noise(int x, int y, unsigned int col_in) {
     unsigned char R, G, B;
     bm_get_rgb(col_in, &R, &G, &B);
     /*
-    This noise function is not very good. It is based on one of the LGCs on
-    the Wikipedia page.
     https://en.wikipedia.org/wiki/Linear_congruential_generator
     */
-    //int val = ((((y + x * 134775813) * 214013  + 2531011  ) >> 16) & 0xF) - 8;
-    int val = ((((x + y * SCREEN_WIDTH) * 214013  + 2531011  ) >> 16) & 0x7) - 3;
+    int val = (int)(nz_rand() & 0x7) - 4;
+    if(x & 0x01) val-=4;
+    if(y & 0x02) val-=4;
+
     int iR = R + val, iG = G + val, iB = B + val;
     if(iR > 0xFF) iR = 0xFF; if(iR < 0) iR = 0;
     if(iG > 0xFF) iG = 0xFF; if(iG < 0) iG = 0;
@@ -229,12 +237,18 @@ static void draw_screen() {
     bm_smooth(&oldscreen);
     bm_blit_ex(screen, 0, 0, screen->w, screen->h, &chip8_screen, 0, 0, w, h, 0);
     add_bitmaps(screen, &oldscreen);
+
+    // float smooth_kernel[] = { 0.1, 0.1, 0.1,
+                              // 0.1, 0.4, 0.1,
+                              // 0.1, 0.1, 0.1};
+    // bm_apply_kernel(screen, 3, smooth_kernel);
 #else
     bm_blit_ex(screen, 0, 0, screen->w, screen->h, &chip8_screen, 0, 0, w, h, 0);
 #endif
 
 #ifdef CRT_NOISE
     int x, y;
+    nz_srand(1234);
     for(y = 0; y < screen->h; y++) {
         for(x = 0; x < screen->w; x++) {
             unsigned int c = bm_get(screen, x, y);
