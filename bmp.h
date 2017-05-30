@@ -15,27 +15,29 @@
  * License
  * -------
  *
- *     MIT License
+ * ```
+ * MIT License
  *
- *     Copyright (c) 2017 Werner Stoop
+ * Copyright (c) 2017 Werner Stoop
  *
- *     Permission is hereby granted, free of charge, to any person obtaining a copy
- *     of this software and associated documentation files (the "Software"), to deal
- *     in the Software without restriction, including without limitation the rights
- *     to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- *     copies of the Software, and to permit persons to whom the Software is
- *     furnished to do so, subject to the following conditions:
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
  *
- *     The above copyright notice and this permission notice shall be included in all
- *     copies or substantial portions of the Software.
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
  *
- *     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- *     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- *     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- *     AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- *     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- *     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- *     SOFTWARE.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ * ```
  *
  * API
  * ---
@@ -194,7 +196,7 @@ Bitmap *bm_load_mem(const unsigned char *buffer, long len);
  * Loads a bitmap from a SDL `SDL_RWops*` structure,
  * for use with the [SDL library] (http://www.libsdl.org).
  *
- * This function is only available if the USESDL preprocessor macro
+ * This function is only available if the `USESDL` preprocessor macro
  * is defined, and `SDL.h` is included before `bmp.h`.
  *
  * BMP, GIF and PCX support is always enabled, while JPG and PNG support
@@ -479,17 +481,22 @@ void bm_rotate_blit(Bitmap *dst, int ox, int oy, Bitmap *src, int px, int py, do
  */
 
 /** `void bm_smooth(Bitmap *b)`  \
- * Smoothes the bitmap `b` by applying a 5x5 Gaussian filter.
+ * Smoothes the bitmap `b` by applying a 5&times;5 Gaussian filter.
  */
 void bm_smooth(Bitmap *b);
 
 /** `void bm_apply_kernel(Bitmap *b, int dim, float kernel[])`  \
- * Applies a `dim` * `dim` kernel to the image.
+ * Applies a `dim` &times; `dim` kernel to the image.
+ *
+ *     float smooth_kernel[] = { 0.0, 0.1, 0.0,
+ *                               0.1, 0.6, 0.1,
+ *                               0.0, 0.1, 0.0};
+ *     bm_apply_kernel(screen, 3, smooth_kernel);
  */
 void bm_apply_kernel(Bitmap *b, int dim, float kernel[]);
 
 /** `Bitmap *bm_resample(const Bitmap *in, int nw, int nh)`  \
- * Creates a new bitmap of dimensions `nw` * `nh` that is a scaled
+ * Creates a new bitmap of dimensions `nw` &times; `nh` that is a scaled
  * using the Nearest Neighbour method the input bitmap.
  *
  * The input bimap remains untouched.
@@ -497,7 +504,7 @@ void bm_apply_kernel(Bitmap *b, int dim, float kernel[]);
 Bitmap *bm_resample(const Bitmap *in, int nw, int nh);
 
 /** `Bitmap *bm_resample_blin(const Bitmap *in, int nw, int nh)`  \
- * Creates a new bitmap of dimensions `nw` * `nh` that is a scaled
+ * Creates a new bitmap of dimensions `nw` &times; `nh` that is a scaled
  * using Bilinear Interpolation from the input bitmap.
  *
  * The input bimap remains untouched.
@@ -507,7 +514,7 @@ Bitmap *bm_resample(const Bitmap *in, int nw, int nh);
 Bitmap *bm_resample_blin(const Bitmap *in, int nw, int nh);
 
 /** `Bitmap *bm_resample_bcub(const Bitmap *in, int nw, int nh)`  \
- * Creates a new bitmap of dimensions `nw` * `nh` that is a scaled
+ * Creates a new bitmap of dimensions `nw` &times; `nh` that is a scaled
  * using Bicubic Interpolation from the input bitmap.
  *
  * The input bimap remains untouched.
@@ -645,6 +652,7 @@ void bm_fill(Bitmap *b, int x, int y);
  *   width (in pixels) of a single character in the font.
  * * `int (*height)(struct bitmap_font *font)` - Function that returns the
  *   height (in pixels) of a single character in the font.
+ * * `void (*dtor)(struct bitmap_font *font)` - Function that destroys
  * * `void *data` - Additonal data that may be required by the font.
  */
 typedef struct bitmap_font {
@@ -652,6 +660,7 @@ typedef struct bitmap_font {
     int (*puts)(Bitmap *b, int x, int y, const char *text);
     int (*width)(struct bitmap_font *font);
     int (*height)(struct bitmap_font *font);
+    void (*dtor)(struct bitmap_font *font);
     void *data;
 } BmFont;
 
@@ -697,6 +706,12 @@ int bm_puts(Bitmap *b, int x, int y, const char *text);
  */
 int bm_printf(Bitmap *b, int x, int y, const char *fmt, ...);
 
+/** `void bm_free_font(BmFont *font)`  \
+ * Deallocates a font. It basically just calls the `dtor` member of the
+ * `font` structure.
+ */
+void bm_free_font(BmFont *font);
+
 /**
  * ### Raster Font Functions
  * `bmp.h` has support for drawing text using raster fonts from any of the
@@ -734,11 +749,6 @@ int bm_printf(Bitmap *b, int x, int y, const char *fmt, ...);
  */
 BmFont *bm_make_ras_font(const char *file, int spacing);
 
-/** `void bm_free_ras_font(BmFont *font)`  \
- * Frees a raster font previously created with `bm_make_ras_font()`.
- */
-void bm_free_ras_font(BmFont *font);
-
 /**
  * ### XBM Font Functions
  * `bmp.h` has support for drawing text using XBM fonts built
@@ -752,11 +762,6 @@ void bm_free_ras_font(BmFont *font);
  * fonts in the `fonts/` directory.
  */
 BmFont *bm_make_xbm_font(const unsigned char *bits, int spacing);
-
-/** `void bm_free_xbm_font(BmFont *font)`  \
- * Frees an XBM font previously created with `bm_make_xbm_font()`.
- */
-void bm_free_xbm_font(BmFont *font);
 
 #if defined(__cplusplus) || defined(c_plusplus)
 } /* extern "C" */
@@ -783,27 +788,27 @@ void bm_free_xbm_font(BmFont *font);
  * References
  * ----------
  *
- * * [BMP file format](http://en.wikipedia.org/wiki/BMP_file_format)
- * * [Bresenham's line algorithm](http://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm)
+ * * [BMP file format](http://en.wikipedia.org/wiki/BMP_file_format) on Wikipedia
+ * * [Bresenham's line algorithm](http://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm) on Wikipedia
  * * <http://members.chello.at/~easyfilter/bresenham.html>
- * * [Flood fill](http://en.wikipedia.org/wiki/Flood_fill)
- * * <http://en.wikipedia.org/wiki/Midpoint_circle_algorithm>
+ * * [Flood fill](http://en.wikipedia.org/wiki/Flood_fill) on Wikipedia
+ * * [Midpoint circle algorithm](http://en.wikipedia.org/wiki/Midpoint_circle_algorithm) on Wikipedia
  * * <http://web.archive.org/web/20110706093850/http://free.pages.at/easyfilter/bresenham.html>
- * * <http://damieng.com/blog/2011/02/20/typography-in-8-bits-system-fonts>
- * * <http://www.w3.org/Graphics/GIF/spec-gif89a.txt>
+ * * [Typography in 8 bits: System fonts](http://damieng.com/blog/2011/02/20/typography-in-8-bits-system-fonts)
+ * * [GIF89a specification](http://www.w3.org/Graphics/GIF/spec-gif89a.txt)
  * * Nelson, M.R. : "LZW Data Compression", Dr. Dobb's Journal, October 1989.
  * * <http://commandlinefanatic.com/cgi-bin/showarticle.cgi?article=art011>
- * * <http://www.matthewflickinger.com/lab/whatsinagif/bits_and_bytes.asp>
+ * * [What's In A GIF](http://www.matthewflickinger.com/lab/whatsinagif/index.html) by Matthew Flickinger
  * * <http://web.archive.org/web/20100206055706/http://www.qzx.com/pc-gpe/pcx.txt>
  * * <http://www.shikadi.net/moddingwiki/PCX_Format>
- * * <https://en.wikipedia.org/wiki/Truevision_TGA>
+ * * [Truevision TGA](https://en.wikipedia.org/wiki/Truevision_TGA) on Wikipedia
  * * <http://paulbourke.net/dataformats/tga/>
  * * <http://www.ludorg.net/amnesia/TGA_File_Format_Spec.html>
- * * [X PixMap](https://en.wikipedia.org/wiki/X_PixMap)
+ * * [X PixMap](https://en.wikipedia.org/wiki/X_PixMap) on Wikipedia
  * * <http://www.fileformat.info/format/xpm/egff.htm>
  * * "Fast Bitmap Rotation and Scaling" By Steven Mortimer, Dr Dobbs' Journal, July 01, 2001  \
  *   <http://www.drdobbs.com/architecture-and-design/fast-bitmap-rotation-and-scaling/184416337>
  * * <http://www.efg2.com/Lab/ImageProcessing/RotateScanline.htm>
+ * * [Image Filtering](http://lodev.org/cgtutor/filtering.html) in _Lode's Computer Graphics Tutorial_
  */
-
 #endif /* BMP_H */

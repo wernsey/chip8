@@ -238,10 +238,10 @@ static void draw_screen() {
     bm_blit_ex(screen, 0, 0, screen->w, screen->h, &chip8_screen, 0, 0, w, h, 0);
     add_bitmaps(screen, &oldscreen);
 
-    // float smooth_kernel[] = { 0.1, 0.1, 0.1,
-                              // 0.1, 0.4, 0.1,
-                              // 0.1, 0.1, 0.1};
-    // bm_apply_kernel(screen, 3, smooth_kernel);
+    float smooth_kernel[] = { 0.0, 0.1, 0.0,
+                              0.1, 0.6, 0.1,
+                              0.0, 0.1, 0.0};
+    bm_apply_kernel(screen, 3, smooth_kernel);
 #else
     bm_blit_ex(screen, 0, 0, screen->w, screen->h, &chip8_screen, 0, 0, w, h, 0);
 #endif

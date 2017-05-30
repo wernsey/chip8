@@ -3153,7 +3153,6 @@ void bm_rotate_blit(Bitmap *dst, int ox, int oy, Bitmap *src, int px, int py, do
 
 void bm_smooth(Bitmap *b) {
     Bitmap *tmp = bm_create(b->w, b->h);
-    unsigned char *t = b->data;
     int x, y;
 
     /* http://prideout.net/archive/bloom/ */
@@ -3194,14 +3193,12 @@ void bm_smooth(Bitmap *b) {
             BM_SET_RGBA(tmp, x, y, R/c, G/c, B/c, A/c);
         }
 
-    b->data = tmp->data;
-    tmp->data = t;
+    memcpy(b->data, tmp->data, b->w * b->h * 4);
     bm_free(tmp);
 }
 
 void bm_apply_kernel(Bitmap *b, int dim, float kernel[]) {
     Bitmap *tmp = bm_create(b->w, b->h);
-    unsigned char *t = b->data;
     int x, y;
     int kf = dim >> 1;
 
@@ -3233,8 +3230,7 @@ void bm_apply_kernel(Bitmap *b, int dim, float kernel[]) {
         }
     }
 
-    b->data = tmp->data;
-    tmp->data = t;
+    memcpy(b->data, tmp->data, b->w * b->h * 4);
     bm_free(tmp);
 }
 
@@ -4520,6 +4516,12 @@ int bm_printf(Bitmap *b, int x, int y, const char *fmt, ...) {
     return bm_puts(b, x, y, buffer);
 }
 
+void bm_free_font(BmFont *font) {
+    if(font && font->dtor) {
+        font->dtor(font);
+    }
+}
+
 /** RASTER FONT FUNCTIONS ******************************************************/
 
 typedef struct {
@@ -4567,12 +4569,21 @@ static int rf_height(struct bitmap_font *font) {
     return data->height;
 }
 
+static void rf_free_font(BmFont *font) {
+    if(!font || strcmp(font->type, "RASTER_FONT"))
+        return;
+    bm_free(((RasterFontData*)font->data)->bmp);
+    free(font->data);
+    free(font);
+}
+
 BmFont *bm_make_ras_font(const char *file, int spacing) {
     BmFont *font = malloc(sizeof *font);
     font->type = "RASTER_FONT";
     font->puts = rf_puts;
     font->width = rf_width;
     font->height = rf_height;
+    font->dtor = rf_free_font;
     RasterFontData *data = malloc(sizeof *data);
     data->bmp = bm_load(file);
     if(!data->bmp) {
@@ -4588,14 +4599,6 @@ BmFont *bm_make_ras_font(const char *file, int spacing) {
     data->spacing = spacing;
     font->data = data;
     return font;
-}
-
-void bm_free_ras_font(BmFont *font) {
-    if(!font || strcmp(font->type, "RASTER_FONT"))
-        return;
-    bm_free(((RasterFontData*)font->data)->bmp);
-    free(font->data);
-    free(font);
 }
 
 /** XBM FONT FUNCTIONS *********************************************************/
@@ -4755,9 +4758,11 @@ static int xbmf_height(BmFont *font) {
     return 8;
 }
 
-void bm_reset_font(Bitmap *b) {
-    static BmFont font = {"XBM",xbmf_puts,xbmf_width,xbmf_height,NULL};
-    bm_set_font(b, &font);
+static void xbmf_free(BmFont *font) {
+    XbmFontInfo *info = font->data;
+    assert(!strcmp(font->type, "XBM"));
+    free(info);
+    free(font);
 }
 
 BmFont *bm_make_xbm_font(const unsigned char *bits, int spacing) {
@@ -4779,14 +4784,13 @@ BmFont *bm_make_xbm_font(const unsigned char *bits, int spacing) {
     font->puts = xbmf_puts;
     font->width = xbmf_width;
     font->height = xbmf_height;
+    font->dtor = xbmf_free;
     font->data = info;
 
     return font;
 }
-void bm_free_xbm_font(BmFont *font) {
-    XbmFontInfo *info = font->data;
-    assert(!strcmp(font->type, "XBM"));
-    free(info);
-    free(font);
-}
 
+void bm_reset_font(Bitmap *b) {
+    static BmFont font = {"XBM",xbmf_puts,xbmf_width,xbmf_height,NULL,NULL};
+    bm_set_font(b, &font);
+}
