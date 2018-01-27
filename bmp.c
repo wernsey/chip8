@@ -30,10 +30,13 @@ you may not want to import a bunch of third party libraries.
 #ifdef USEPNG
 #   include <png.h>
 #endif
+
 #ifdef USEJPG
 #   include <jpeglib.h>
 #   include <setjmp.h>
 #endif
+
+#include "bmp.h"
 
 /* Ignore the alpha byte when comparing colors?
 FIXME: Not all functions that should respect IGNORE_ALPHA does so.
@@ -61,7 +64,12 @@ Still, it is here if you need it
 #  define SAVE_GIF_TRANSPARENT 0
 #endif
 
-#include "bmp.h"
+#if BM_LAST_ERROR
+const char *bm_last_error = "";
+#  define SET_ERROR(e) bm_last_error = e
+#else
+#  define SET_ERROR(e)
+#endif
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
@@ -144,6 +152,10 @@ struct rgb_triplet {
 
 Bitmap *bm_create(int w, int h) {
     Bitmap *b = malloc(sizeof *b);
+    if(!b) {
+        SET_ERROR("out of memory");
+        return NULL;
+    }
 
     assert(w > 0);
     assert(h > 0);
@@ -157,6 +169,11 @@ Bitmap *bm_create(int w, int h) {
     b->clip.y1 = h;
 
     b->data = malloc(BM_BLOB_SIZE(b));
+    if(!b->data) {
+        SET_ERROR("out of memory");
+        free(b);
+        return NULL;
+    }
     memset(b->data, 0x00, BM_BLOB_SIZE(b));
 
     b->font = NULL;
@@ -166,6 +183,16 @@ Bitmap *bm_create(int w, int h) {
 
     return b;
 }
+
+#if USESTB
+#define STB_IMAGE_IMPLEMENTATION
+#ifdef __TINYC__
+/* Yes, it compiles with the Tiny C Compiler, but without SIMD */
+#  define STBI_NO_SIMD
+#endif
+#include "stb_image.h"
+#undef STB_IMAGE_IMPLEMENTATION
+#endif
 
 /* Wraps around the stdio functions, so I don't have to duplicate my code
     for SDL2's RWops support.
@@ -258,8 +285,10 @@ static BmReader make_rwops_reader(SDL_RWops *rw) {
 Bitmap *bm_load(const char *filename) {
     Bitmap *bmp;
     FILE *f = fopen(filename, "rb");
-    if(!f)
+    if(!f) {
+        SET_ERROR("unable to open file");
         return NULL;
+    }
     bmp = bm_load_fp(f);
     fclose(f);
     return bmp;
@@ -281,10 +310,11 @@ static Bitmap *bm_load_jpg_fp(FILE *f);
 Bitmap *bm_load_fp(FILE *f) {
     unsigned char magic[4];
 
-    long start = ftell(f),
-        isbmp = 0, ispng = 0, isjpg = 0, ispcx = 0, isgif = 0, istga = 0;
+    long start, isbmp = 0, ispng = 0, isjpg = 0, ispcx = 0, isgif = 0, istga = 0;
 
     BmReader rd = make_file_reader(f);
+    start = rd.ftell(rd.data);
+
     /* Tries to detect the type of file by looking at the first bytes.
     http://www.astro.keele.ac.uk/oldusers/rno/Computing/File_magic.html
     */
@@ -305,22 +335,45 @@ Bitmap *bm_load_fp(FILE *f) {
             istga = is_tga_file(rd);
         }
     } else {
+        SET_ERROR("couldn't determine filetype");
         return NULL;
     }
     rd.fseek(rd.data, start, SEEK_SET);
 
+    if(isjpg) {
 #ifdef USEJPG
-    if(isjpg)
         return bm_load_jpg_fp(f);
+#elif USESTB
+		int x, y, n;
+		stbi_uc *data = stbi_load_from_file(f, &x, &y, &n, 4);
+		if(!data) {
+			SET_ERROR(stbi_failure_reason());
+			return NULL;
+		}
+		return bm_from_stb(x, y, data);
 #else
-    (void)isjpg;
+        (void)isjpg;
+        SET_ERROR("JPEG support is not enabled");
+        return NULL;
 #endif
+    }
+    if(ispng) {
 #ifdef USEPNG
-    if(ispng)
         return bm_load_png_fp(f);
+#elif USESTB
+		int x, y, n;
+		stbi_uc *data = stbi_load_from_file(f, &x, &y, &n, 4);
+		if(!data) {
+			SET_ERROR(stbi_failure_reason());
+			return NULL;
+		}
+		return bm_from_stb(x, y, data);
 #else
-    (void)ispng;
+        (void)ispng;
+        SET_ERROR("PNG support is not enabled");
+        return NULL;
 #endif
+    }
     if(isgif) {
         return bm_load_gif_rd(rd);
     }
@@ -333,6 +386,7 @@ Bitmap *bm_load_fp(FILE *f) {
     if(istga) {
         return bm_load_tga_rd(rd);
     }
+    SET_ERROR("unsupported file type");
     return NULL;
 }
 
@@ -366,26 +420,49 @@ Bitmap *bm_load_mem(const unsigned char *buffer, long len) {
             istga = is_tga_file(rd);
         }
     } else {
+        SET_ERROR("couldn't determine filetype");
         return NULL;
     }
     rd.fseek(rd.data, 0, SEEK_SET);
 
-#ifdef USEJPG
     if(isjpg) {
-        /* TODO: JPG support */
+#ifdef USEJPG
+        /* FIXME: JPG support */
+        SET_ERROR("JPEG not supported by bm_load_mem()");
         return NULL;
-    }
+#elif USESTB
+		int x, y, n;
+		stbi_uc *data = stbi_load_from_memory(buffer, len, &x, &y, &n, 4);
+		if(!data) {
+			SET_ERROR(stbi_failure_reason());
+			return NULL;
+		}
+		return bm_from_stb(x, y, data);
 #else
-    (void)isjpg;
+		(void)isjpg;
+        SET_ERROR("JPEG support is not enabled");
+        return NULL;
 #endif
-#ifdef USEPNG
+    }
     if(ispng) {
-        /* TODO: PNG support */
+#ifdef USEPNG
+        /* FIXME: PNG support */
+        SET_ERROR("PNG not supported by bm_load_mem()");
         return NULL;
-    }
+#elif USESTB
+		int x, y, n;
+		stbi_uc *data = stbi_load_from_memory(buffer, len, &x, &y, &n, 4);
+		if(!data) {
+			SET_ERROR(stbi_failure_reason());
+			return NULL;
+		}
+		return bm_from_stb(x, y, data);
 #else
-    (void)ispng;
+		(void)ispng;
+        SET_ERROR("PNG support is not enabled");
+        return NULL;
 #endif
+    }
     if(isgif) {
         return bm_load_gif_rd(rd);
     }
@@ -398,9 +475,9 @@ Bitmap *bm_load_mem(const unsigned char *buffer, long len) {
     if(istga) {
         return bm_load_tga_rd(rd);
     }
+    SET_ERROR("unsupported file type"); /* should not happen */
     return NULL;
 }
-
 
 static Bitmap *bm_load_bmp_rd(BmReader rd) {
     struct bmpfile_magic magic;
@@ -416,20 +493,24 @@ static Bitmap *bm_load_bmp_rd(BmReader rd) {
     long start_offset = rd.ftell(rd.data);
 
     if(rd.fread(&magic, sizeof magic, 1, rd.data) != 1) {
+        SET_ERROR("fread on magic");
         return NULL;
     }
 
     if(memcmp(magic.magic, "BM", 2)) {
+        SET_ERROR("bad magic");
         return NULL;
     }
 
     if(rd.fread(&hdr, sizeof hdr, 1, rd.data) != 1 ||
         rd.fread(&dib, sizeof dib, 1, rd.data) != 1) {
+        SET_ERROR("fread on header");
         return NULL;
     }
 
     if((dib.bitspp != 8 && dib.bitspp != 24) || dib.compress_type != 0) {
         /* Unsupported BMP type. TODO (maybe): support more types? */
+        SET_ERROR("unsupported BMP type");
         return NULL;
     }
 
@@ -444,14 +525,17 @@ static Bitmap *bm_load_bmp_rd(BmReader rd) {
         }
         palette = calloc(dib.ncolors, sizeof *palette);
         if(!palette) {
+            SET_ERROR("out of memory");
             goto error;
         }
         if(rd.fread(palette, sizeof *palette, dib.ncolors, rd.data) != dib.ncolors) {
+            SET_ERROR("fread on palette");
             goto error;
         }
     }
 
     if(rd.fseek(rd.data, hdr.bmp_offset + start_offset, SEEK_SET) != 0) {
+        SET_ERROR("out of memory");
         goto error;
     }
 
@@ -460,15 +544,18 @@ static Bitmap *bm_load_bmp_rd(BmReader rd) {
 
     data = malloc(rs * b->h);
     if(!data) {
+        SET_ERROR("out of memory");
         goto error;
     }
 
     if(dib.bmp_bytesz == 0) {
         if(rd.fread(data, 1, rs * b->h, rd.data) != rs * b->h) {
+            SET_ERROR("fread on data");
             goto error;
         }
     } else {
         if(rd.fread(data, 1, dib.bmp_bytesz, rd.data) != dib.bmp_bytesz) {
+            SET_ERROR("fread on data");
             goto error;
         }
     }
@@ -568,7 +655,10 @@ static int bm_save_bmp(Bitmap *b, const char *fname) {
     assert(rs % 4 == 0);
 
     f = fopen(fname, "wb");
-    if(!f) return 0;
+    if(!f) {
+        SET_ERROR("unable to open file for output");
+        return 0;
+    }
 
     hdr.creator1 = 0;
     hdr.creator2 = 0;
@@ -594,6 +684,7 @@ static int bm_save_bmp(Bitmap *b, const char *fname) {
 
     data = malloc(dib.bmp_bytesz);
     if(!data) {
+        SET_ERROR("out of memory");
         fclose(f);
         return 0;
     }
@@ -633,18 +724,22 @@ static Bitmap *bm_load_png_fp(FILE *f) {
     int w, h, ct, bpp, x, y;
 
     if((fread(header, 1, 8, f) != 8) || png_sig_cmp(header, 0, 8)) {
+        SET_ERROR("fread on PNG header");
         goto error;
     }
 
     png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if(!png) {
+        SET_ERROR("png_create_read_struct failed");
         goto error;
     }
     info = png_create_info_struct(png);
     if(!info) {
+        SET_ERROR("png_create_info_struct failed");
         goto error;
     }
     if(setjmp(png_jmpbuf(png))) {
+        SET_ERROR("png_read_info failed");
         goto error;
     }
 
@@ -661,6 +756,7 @@ static Bitmap *bm_load_png_fp(FILE *f) {
     assert(bpp == 8);(void)bpp;
 
     if(ct != PNG_COLOR_TYPE_RGB && ct != PNG_COLOR_TYPE_RGBA) {
+        SET_ERROR("unsupported PNG color type");
         goto error;
     }
 
@@ -670,6 +766,7 @@ static Bitmap *bm_load_png_fp(FILE *f) {
     bmp = bm_create(w,h);
 
     if(setjmp(png_jmpbuf(png))) {
+        SET_ERROR("png_read_image failed");
         goto error;
     }
 
@@ -727,21 +824,25 @@ static int bm_save_png(Bitmap *b, const char *fname) {
 
     png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if(!png) {
+        SET_ERROR("png_create_write_struct failed");
         goto error;
     }
 
     info = png_create_info_struct(png);
     if(!info) {
+        SET_ERROR("png_create_info_struct failed");
         goto error;
     }
 
     if(setjmp(png_jmpbuf(png))) {
+        SET_ERROR("png_init_io failed");
         goto error;
     }
 
     png_init_io(png, f);
 
     if(setjmp(png_jmpbuf(png))) {
+        SET_ERROR("png_write_row failed");
         goto error;
     }
 
@@ -764,7 +865,9 @@ static int bm_save_png(Bitmap *b, const char *fname) {
         png_write_row(png, row);
     }
 
+    /* FIXME: Is this a copy/paste error? */
     if(setjmp(png_jmpbuf(png))) {
+        SET_ERROR("something failed");
         goto error;
     }
 
@@ -801,6 +904,7 @@ static Bitmap *bm_load_jpg_fp(FILE *f) {
     cinfo.err = jpeg_std_error(&jerr.pub);
     jerr.pub.error_exit = jpg_on_error;
     if(setjmp(jerr.jbuf)) {
+        SET_ERROR("JPEG loading failed");
         jpeg_destroy_decompress(&cinfo);
         return NULL;
     }
@@ -818,6 +922,7 @@ static Bitmap *bm_load_jpg_fp(FILE *f) {
 
     data = malloc(row_stride);
     if(!data) {
+        SET_ERROR("out of memory");
         return NULL;
     }
     memset(data, 0x00, row_stride);
@@ -854,6 +959,7 @@ static int bm_save_jpg(Bitmap *b, const char *fname) {
     cinfo.err = jpeg_std_error(&jerr.pub);
     jerr.pub.error_exit = jpg_on_error;
     if(setjmp(jerr.jbuf)) {
+        SET_ERROR("JPEG saving failed");
         jpeg_destroy_compress(&cinfo);
         return 0;
     }
@@ -872,6 +978,7 @@ static int bm_save_jpg(Bitmap *b, const char *fname) {
 
     data = malloc(row_stride);
     if(!data) {
+        SET_ERROR("out of memory");
         fclose(f);
         return 0;
     }
@@ -928,18 +1035,24 @@ Bitmap *bm_load_rw(SDL_RWops *rw) {
     }
     SDL_RWseek(rw, start, RW_SEEK_SET);
 
+    if(isjpg) {
 #  ifdef USEJPG
-    if(isjpg)
         return bm_load_jpg_rw(rw);
 #  else
-    (void)isjpg;
+        (void)isjpg;
+        SET_ERROR("JPEG support is not enabled");
+        return NULL;
 #  endif
+    }
+    if(ispng) {
 #  ifdef USEPNG
-    if(ispng)
         return bm_load_png_rw(rw);
 #  else
-    (void)ispng;
+        (void)ispng;
+        SET_ERROR("PNG support is not enabled");
+        return NULL;
 #  endif
+    }
     if(isgif) {
         BmReader rd = make_rwops_reader(rw);
         return bm_load_gif_rd(rd);
@@ -952,6 +1065,7 @@ Bitmap *bm_load_rw(SDL_RWops *rw) {
         BmReader rd = make_rwops_reader(rw);
         return bm_load_bmp_rd(rd);
     }
+    SET_ERROR("unsupported filetype");
     return NULL;
 }
 
@@ -1170,6 +1284,7 @@ static Bitmap *bm_load_jpg_rw(SDL_RWops *rw) {
 
     data = malloc(row_stride);
     if(!data) {
+        SET_ERROR("out of memory");
         return NULL;
     }
     memset(data, 0x00, row_stride);
@@ -1348,9 +1463,11 @@ static Bitmap *bm_load_gif_rd(BmReader rd) {
 
     /* Section 17. Header. */
     if(rd.fread(&gif.header, sizeof gif.header, 1, rd.data) != 1) {
+        SET_ERROR("unable to read GIF header");
         return NULL;
     }
     if(memcmp(gif.header.signature, "GIF", 3)){
+        SET_ERROR("bad GIF signature");
         return NULL;
     }
     if(!memcmp(gif.header.version, "87a", 3)){
@@ -1358,6 +1475,7 @@ static Bitmap *bm_load_gif_rd(BmReader rd) {
     } else if(!memcmp(gif.header.version, "89a", 3)){
         gif.version = gif_89a;
     } else {
+        SET_ERROR("unable to determine GIF version");
         return NULL;
     }
 
@@ -1368,6 +1486,7 @@ static Bitmap *bm_load_gif_rd(BmReader rd) {
     assert(sizeof *palette == 3);
 
     if(rd.fread(&gif.lsd, sizeof gif.lsd, 1, rd.data) != 1) {
+        SET_ERROR("unable to read GIF LSD");
         return NULL;
     }
 
@@ -1388,6 +1507,7 @@ static Bitmap *bm_load_gif_rd(BmReader rd) {
 
         if(rd.fread(palette, sizeof *palette, sgct, rd.data) != sgct) {
             free(palette);
+            SET_ERROR("unable to read GIF palette");
             return NULL;
         }
 
@@ -1400,6 +1520,7 @@ static Bitmap *bm_load_gif_rd(BmReader rd) {
 
     } else {
         /* what? */
+        SET_ERROR("don't know what to do about GIF palette");
         palette = NULL;
     }
 
@@ -1417,6 +1538,7 @@ static Bitmap *bm_load_gif_rd(BmReader rd) {
     /* Section 27. Trailer. */
     if((rd.fread(&trailer, 1, 1, rd.data) != 1) || trailer != 0x3B) {
         bm_free(gif.bmp);
+        SET_ERROR("unable to read GIF trailer");
         return NULL;
     }
 
@@ -1479,6 +1601,7 @@ static int gif_read_image(BmReader rd, GIF *gif, struct rgb_triplet *ct, int sct
         for(;;) {
             long pos = rd.ftell(rd.data);
             if(!gif_read_extension(rd, &gce)) {
+                SET_ERROR("unable to read GIF extension");
                 rd.fseek(rd.data, pos, SEEK_SET);
                 break;
             }
@@ -1510,6 +1633,7 @@ static int gif_read_image(BmReader rd, GIF *gif, struct rgb_triplet *ct, int sct
     }
 
     if(!gif_read_tbid(rd, gif, &gif_id, &gce, ct, sct)) {
+        SET_ERROR("unable to read GIF TBID");
         rv = 0; /* what? */
     }
 
@@ -1529,6 +1653,7 @@ static unsigned char *gif_data_sub_blocks(BmReader rd, int *r_tsize) {
         *r_tsize = 0;
 
     if(rd.fread(&size, 1, 1, rd.data) != 1) {
+        SET_ERROR("error reading GIF subblock size");
         return NULL;
     }
     buffer = realloc(buffer, 1);
@@ -1538,12 +1663,14 @@ static unsigned char *gif_data_sub_blocks(BmReader rd, int *r_tsize) {
         pos = buffer + tsize;
 
         if(rd.fread(pos, sizeof *pos, size, rd.data) != size) {
+            SET_ERROR("error reading GIF subblock");
             free(buffer);
             return NULL;
         }
 
         tsize += size;
         if(rd.fread(&size, 1, 1, rd.data) != 1) {
+            SET_ERROR("error reading GIF subblock");
             free(buffer);
             return NULL;
         }
@@ -1605,6 +1732,7 @@ static int gif_read_tbid(BmReader rd, GIF *gif, GIF_ID *gif_id, GIF_GCE *gce, st
             if(decoded) {
                 if(outlen != gif_id->width * gif_id->height) {
                     /* Shouldn't happen unless the file is corrupt */
+                    SET_ERROR("error decoding GIF LZW");
                     rv = 0;
                 } else {
                     /* Vars for interlacing: */
@@ -1907,6 +2035,7 @@ static int bm_save_gif(Bitmap *b, const char *fname) {
 
     FILE *f = fopen(fname, "wb");
     if(!f) {
+        SET_ERROR("couldn't open GIF output file");
         return 0;
     }
 
@@ -2000,6 +2129,8 @@ static int bm_save_gif(Bitmap *b, const char *fname) {
     if(fwrite(&gif.header, sizeof gif.header, 1, f) != 1 ||
         fwrite(&gif.lsd, sizeof gif.lsd, 1, f) != 1 ||
         fwrite(gct, sizeof *gct, sgct, f) != sgct) {
+
+        SET_ERROR("couldn't write GIF header");
         fclose(f);
         return 0;
     }
@@ -2036,6 +2167,7 @@ static int bm_save_gif(Bitmap *b, const char *fname) {
     gif_id.fields = 0;
     if(fwrite(&gif_id, sizeof gif_id, 1, f) != 1) {
         fclose(f);
+        SET_ERROR("couldn't write GIF info");
         return 0;
     }
 
@@ -2105,14 +2237,17 @@ static Bitmap *bm_load_pcx_rd(BmReader rd) {
     struct rgb_triplet rgb[256];
 
     if(rd.fread(&hdr, sizeof hdr, 1, rd.data) != 1) {
+        SET_ERROR("couldn't read PCX header");
         return NULL;
     }
     if(hdr.manuf != 0x0A) {
+        SET_ERROR("bad PCX header");
         return NULL;
     }
 
     if(hdr.version != 5 || hdr.encoding != 1 || hdr.bpp != 8 || (hdr.planes != 1 && hdr.planes != 3)) {
         /* We might want to support these PCX types at a later stage... */
+        SET_ERROR("unsupported PCX type");
         return NULL;
     }
 
@@ -2122,12 +2257,15 @@ static Bitmap *bm_load_pcx_rd(BmReader rd) {
 
         rd.fseek(rd.data, -769, SEEK_END);
         if(rd.fread(&pbyte, sizeof pbyte, 1, rd.data) != 1) {
+            SET_ERROR("error reading PCX info");
             return NULL;
         }
         if(pbyte != 12) {
+            SET_ERROR("bad PCX info");
             return NULL;
         }
         if(rd.fread(&rgb, sizeof rgb[0], 256, rd.data) != 256) {
+            SET_ERROR("error reading PCX palette");
             return NULL;
         }
 
@@ -2173,6 +2311,7 @@ static Bitmap *bm_load_pcx_rd(BmReader rd) {
 
     return b;
 read_error:
+    SET_ERROR("error reading PCX data");
     bm_free(b);
     return NULL;
 }
@@ -2188,8 +2327,10 @@ static int bm_save_pcx(Bitmap *b, const char *fname) {
         return 0;
 
     f = fopen(fname, "wb");
-    if(!f)
+    if(!f) {
+        SET_ERROR("error opening file for PCX output");
         return 0;
+    }
 
     memset(&hdr, 0, sizeof hdr);
 
@@ -2216,6 +2357,7 @@ static int bm_save_pcx(Bitmap *b, const char *fname) {
     memset(&rgb, 0, sizeof rgb);
 
     if(fwrite(&hdr, sizeof hdr, 1, f) != 1) {
+        SET_ERROR("error writing PCX header");
         fclose(f);
         return 0;
     }
@@ -2271,6 +2413,7 @@ static int bm_save_pcx(Bitmap *b, const char *fname) {
 
     fputc(12, f);
     if(fwrite(rgb, sizeof rgb[0], 256, f) != 256) {
+        SET_ERROR("error writing PCX palette");
         rv = 0;
     }
 
@@ -2394,8 +2537,10 @@ static Bitmap *bm_load_tga_rd(BmReader rd) {
     /* Just try to catch cases where is_tga_file() might fail... */
     assert(is_tga_file(rd));
 
-    if(rd.fread(&head, sizeof head, 1, rd.data) != 1)
+    if(rd.fread(&head, sizeof head, 1, rd.data) != 1) {
+        SET_ERROR("error reading TGA header");
         return NULL;
+    }
 
     if(head.img_type == 0)
         return bm_create(head.img_spec.w, head.img_spec.h);
@@ -2412,8 +2557,10 @@ static Bitmap *bm_load_tga_rd(BmReader rd) {
     if(head.map_type) {
         color_map = calloc(head.map_spec.length, head.map_spec.size);
         int r = rd.fread(color_map, head.map_spec.size / 8, head.map_spec.length, rd.data);
-        if(r != head.map_spec.length)
+        if(r != head.map_spec.length) {
+            SET_ERROR("error reading TGA color map");
             goto error;
+        }
     }
 
     int i = 0, j;
@@ -2445,11 +2592,15 @@ static Bitmap *bm_load_tga_rd(BmReader rd) {
             assert(x < bmp->w);
             assert(y < bmp->h);
             if(!(rle & 0x80) || ((rle & 0x80) && !j)) {
-                if(rd.fread(bytes, head.img_spec.bpp / 8, 1, rd.data) != 1)
+                if(rd.fread(bytes, head.img_spec.bpp / 8, 1, rd.data) != 1) {
+                    SET_ERROR("error reading TGA data");
                     goto error;
+                }
             }
-            if(!tga_decode_pixel(bmp, x, y, bytes, &head, color_map))
+            if(!tga_decode_pixel(bmp, x, y, bytes, &head, color_map)) {
+                SET_ERROR("error decoding TGA data");
                 goto error;
+            }
             i++;
         }
     }
@@ -2478,6 +2629,7 @@ static int bm_save_tga(Bitmap *b, const char *fname) {
     head.img_spec.bpp = 24;
 
     if(fwrite(&head, sizeof head, 1, f) != 1) {
+        SET_ERROR("error opening file for TGA output");
         fclose(f);
         return 0;
     }
@@ -2512,6 +2664,7 @@ static int bm_save_tga(Bitmap *b, const char *fname) {
         assert(n <= 128);
         assert(nb <= sizeof bytes);
         if(fwrite(&bytes, 1, nb, f) != nb) {
+            SET_ERROR("error writing TGA data");
             fclose(f);
             return 0;
         }
@@ -2519,6 +2672,7 @@ static int bm_save_tga(Bitmap *b, const char *fname) {
 #else
         bm_get_rgb(c, &bytes[2], &bytes[1], &bytes[0]);
         if(fwrite(&bytes, 3, 1, f) != 1) {
+            SET_ERROR("error writing TGA palette");
             fclose(f);
             return 0;
         }
@@ -2529,6 +2683,51 @@ static int bm_save_tga(Bitmap *b, const char *fname) {
     fclose(f);
     return 1;
 }
+
+#if USESTB
+/*
+In the future, I can add support for stb_image_write.h as well.
+See https://github.com/nothings/stb/blob/master/stb_image_write.h
+*/
+Bitmap *bm_from_stb(int w, int h, unsigned char *data) {
+	Bitmap *b = malloc(sizeof *b);
+	int i;
+
+    b->w = w;
+    b->h = h;
+
+    b->clip.x0 = 0;
+    b->clip.y0 = 0;
+    b->clip.x1 = w;
+    b->clip.y1 = h;
+
+    b->font = NULL;
+    bm_reset_font(b);
+
+    bm_set_color(b, 0xFFFFFFFF);
+	b->data = data;
+
+#if !ABGR
+	/* Unfortunately, the R and B channels of stb_image are
+		swapped from the format I'd prefer them in. */
+	for(i = 0; i < w * h * 4; i += 4) {
+		unsigned char c = data[i];
+		data[i] = data[i+2];
+		data[i+2] = c;
+	}
+#endif
+
+	return b;
+}
+
+Bitmap *bm_load_stb(const char *filename) {
+	int w, h, n;
+	unsigned char *data = stbi_load(filename, &w, &h, &n, 4);
+	if(!data)
+		return NULL;
+	return bm_from_stb(w, h, data);
+}
+#endif /* USESTB */
 
 Bitmap *bm_copy(Bitmap *b) {
     Bitmap *out = bm_create(b->w, b->h);
@@ -2557,6 +2756,10 @@ void bm_free(Bitmap *b) {
 
 Bitmap *bm_bind(int w, int h, unsigned char *data) {
     Bitmap *b = malloc(sizeof *b);
+    if(!b) {
+        SET_ERROR("out of memory");
+        return NULL;
+    }
     return bm_bind_static(b, data, w, h);
 }
 
@@ -2620,6 +2823,8 @@ Bitmap *bm_from_Xbm(int w, int h, unsigned char *data) {
     int x,y;
 
     Bitmap *bmp = bm_create(w, h);
+    if(!bmp)
+        return NULL;
 
     int byte = 0;
     for(y = 0; y < h; y++)
@@ -2650,6 +2855,9 @@ Bitmap *bm_from_Xpm(char *xpm[]) {
     assert(cp == 1); /* cp != 1 not supported */
 
     b = bm_create(w, h);
+    if(!b)
+        return NULL;
+
     for(i = 0; i < nc; i++) {
         char k, col[20];
         col[sizeof col - 1] = 0;
@@ -3095,23 +3303,31 @@ void bm_rotate_blit(Bitmap *dst, int ox, int oy, Bitmap *src, int px, int py, do
     will be on the destination to get a bounding box for scanning */
     dx = -cosAngle * px * scale + sinAngle * py * scale + ox;
     dy = -sinAngle * px * scale - cosAngle * py * scale + oy;
-    if(dx < minx) minx = dx; if(dx > maxx) maxx = dx;
-    if(dy < miny) miny = dy; if(dy > maxy) maxy = dy;
+    if(dx < minx) minx = dx;
+    if(dx > maxx) maxx = dx;
+    if(dy < miny) miny = dy;
+    if(dy > maxy) maxy = dy;
 
     dx = cosAngle * (src->w - px) * scale + sinAngle * py * scale + ox;
     dy = sinAngle * (src->w - px) * scale - cosAngle * py * scale + oy;
-    if(dx < minx) minx = dx; if(dx > maxx) maxx = dx;
-    if(dy < miny) miny = dy; if(dy > maxy) maxy = dy;
+    if(dx < minx) minx = dx;
+    if(dx > maxx) maxx = dx;
+    if(dy < miny) miny = dy;
+    if(dy > maxy) maxy = dy;
 
     dx = cosAngle * (src->w - px) * scale - sinAngle * (src->h - py) * scale + ox;
     dy = sinAngle * (src->w - px) * scale + cosAngle * (src->h - py) * scale + oy;
-    if(dx < minx) minx = dx; if(dx > maxx) maxx = dx;
-    if(dy < miny) miny = dy; if(dy > maxy) maxy = dy;
+    if(dx < minx) minx = dx;
+    if(dx > maxx) maxx = dx;
+    if(dy < miny) miny = dy;
+    if(dy > maxy) maxy = dy;
 
     dx = -cosAngle * px * scale - sinAngle * (src->h - py) * scale + ox;
     dy = -sinAngle * px * scale + cosAngle * (src->h - py) * scale + oy;
-    if(dx < minx) minx = dx; if(dx > maxx) maxx = dx;
-    if(dy < miny) miny = dy; if(dy > maxy) maxy = dy;
+    if(dx < minx) minx = dx;
+    if(dx > maxx) maxx = dx;
+    if(dy < miny) miny = dy;
+    if(dy > maxy) maxy = dy;
 
     /* Clipping */
     if(minx < dst->clip.x0) minx = dst->clip.x0;
@@ -3149,6 +3365,19 @@ void bm_rotate_blit(Bitmap *dst, int ox, int oy, Bitmap *src, int px, int py, do
         rowu += duCol;
         rowv += dvCol;
     }
+}
+
+void bm_grayscale(Bitmap *b) {
+    /* https://en.wikipedia.org/wiki/Grayscale */
+    int x, y;
+    for(y = 0; y < b->h; y++)
+        for(x = 0; x < b->w; x++) {
+            unsigned int c =  BM_GET(b, x, y);
+            unsigned char R,G,B;
+            bm_get_rgb(c, &R, &G, &B);
+            c = (2126 * R + 7152 * G + 722 * B)/10000;
+            BM_SET(b, x, y, bm_rgb(c, c, c));
+        }
 }
 
 void bm_smooth(Bitmap *b) {
@@ -3257,9 +3486,9 @@ Bilinear Interpolation is better suited for making an image larger.
 Bicubic Interpolation is better suited for making an image smaller.
 http://blog.codinghorror.com/better-image-resizing/
 */
-Bitmap *bm_resample(const Bitmap *in, int nw, int nh) {
-    Bitmap *out = bm_create(nw, nh);
+Bitmap *bm_resample_into(const Bitmap *in, Bitmap *out) {
     int x, y;
+    int nw = out->w, nh = out->h;
     for(y = 0; y < nh; y++)
         for(x = 0; x < nw; x++) {
             int sx = x * in->w/nw;
@@ -3268,6 +3497,13 @@ Bitmap *bm_resample(const Bitmap *in, int nw, int nh) {
             BM_SET(out, x, y, BM_GET(in,sx,sy));
         }
     return out;
+}
+
+Bitmap *bm_resample(const Bitmap *in, int nw, int nh) {
+    Bitmap *out = bm_create(nw, nh);
+    if(!out)
+        return NULL;
+    return bm_resample_into(in, out);
 }
 
 /* http://rosettacode.org/wiki/Bilinear_interpolation */
@@ -3281,9 +3517,9 @@ static double blerp(double c00, double c10, double c01, double c11, double tx, d
         ty);
 }
 
-Bitmap *bm_resample_blin(const Bitmap *in, int nw, int nh) {
-    Bitmap *out = bm_create(nw, nh);
+Bitmap *bm_resample_blin_into(const Bitmap *in, Bitmap *out) {
     int x, y;
+    int nw = out->w, nh = out->h;
     for(y = 0; y < nh; y++)
         for(x = 0; x < nw; x++) {
             int C[4], c;
@@ -3302,9 +3538,20 @@ Bitmap *bm_resample_blin(const Bitmap *in, int nw, int nh) {
                 int p11 = BM_GETN(in,c,sx+dx,sy+dy);
                 C[c] = (int)blerp(p00, p10, p01, p11, gx-sx, gy-sy);
             }
+#if !ABGR
+            BM_SET_RGBA(out, x, y, C[2], C[1], C[0], C[3]);
+#else
             BM_SET_RGBA(out, x, y, C[0], C[1], C[2], C[3]);
+#endif
         }
     return out;
+}
+
+Bitmap *bm_resample_blin(const Bitmap *in, int nw, int nh) {
+    Bitmap *out = bm_create(nw, nh);
+    if(!out)
+        return NULL;
+    return out = bm_resample_blin_into(in, out);
 }
 
 /*
@@ -3321,9 +3568,9 @@ static double triangular_fun(double b) {
     return 0;
 }
 
-Bitmap *bm_resample_bcub(const Bitmap *in, int nw, int nh) {
-    Bitmap *out = bm_create(nw, nh);
+Bitmap *bm_resample_bcub_into(const Bitmap *in, Bitmap *out) {
     int x, y;
+    int nw = out->w, nh = out->h;
 
     for(y = 0; y < nh; y++)
     for(x = 0; x < nw; x++) {
@@ -3354,9 +3601,20 @@ Bitmap *bm_resample_bcub(const Bitmap *in, int nw, int nh) {
             }
         }
 
+#if !ABGR
+        BM_SET_RGBA(out, x, y, sum[2]/denom[2], sum[1]/denom[1], sum[0]/denom[0], sum[3]/denom[3]);
+#else
         BM_SET_RGBA(out, x, y, sum[0]/denom[0], sum[1]/denom[1], sum[2]/denom[2], sum[3]/denom[3]);
+#endif
     }
     return out;
+}
+
+Bitmap *bm_resample_bcub(const Bitmap *in, int nw, int nh) {
+    Bitmap *out = bm_create(nw, nh);
+    if(!out)
+        return NULL;
+    return bm_resample_bcub_into(in, out);
 }
 
 void bm_set_alpha(Bitmap *bm, int a) {
@@ -3811,7 +4069,6 @@ void bm_get_hsl(unsigned int col, double *H, double *S, double *L) {
     assert(S);
     assert(L);
     bm_get_rgb(col, &R, &G, &B);
-    //printf("%.2f %.2f %.2f\n", R/255.0, G/255.0, B/255.0);
     M = MAX(R, MAX(G, B));
     m = MIN(R, MIN(G, B));
     C = M - m;
@@ -4228,10 +4485,103 @@ void bm_bezier3(Bitmap *b, int x0, int y0, int x1, int y1, int x2, int y2) {
     bm_line(b, lx, ly, x2, y2);
 }
 
+void bm_poly(Bitmap *b, BmPoint points[], unsigned int n) {
+    unsigned int i;
+    if(n < 2) return;
+    for(i = 0; i < n - 1; i++) {
+        bm_line(b, points[i].x, points[i].y, points[i+1].x, points[i+1].y);
+    }
+    bm_line(b, points[0].x, points[0].y, points[i].x, points[i].y);
+}
+
+#define MAX_POLY_CORNERS 32
+
+void bm_fillpoly(Bitmap *b, BmPoint points[], unsigned int n) {
+    /* http://alienryderflex.com/polygon_fill/
+    https://hackernoon.com/computer-graphics-scan-line-polygon-fill-algorithm-3cb47283df6
+
+    You might also be interested in this article:
+    http://nothings.org/gamedev/rasterize/
+    */
+    unsigned int i, j, c = bm_get_color(b);
+    int x, y;
+    if(n < 2)
+        return;
+    else if(n == 2) {
+        bm_line(b, points[0].x, points[0].y, points[1].x, points[1].y);
+        return;
+    }
+
+    int nodeX_static[MAX_POLY_CORNERS];
+    int nodes, *nodeX = nodeX_static;
+
+    if(n > MAX_POLY_CORNERS) {
+        nodeX = calloc(n, sizeof *nodeX);
+        if(!nodeX) return;
+    }
+
+    BmRect area = {b->w, b->h, 0, 0};
+    for(i = 0; i < n; i++) {
+        x = points[i].x;
+        y = points[i].y;
+        if(x < area.x0) area.x0 = x;
+        if(y < area.y0) area.y0 = y;
+        if(x > area.x1) area.x1 = x;
+        if(y > area.y1) area.y1 = y;
+    }
+    if(area.x0 < b->clip.x0) area.x0 = b->clip.x0;
+    if(area.y0 < b->clip.y0) area.y0 = b->clip.y0;
+    if(area.x1 >= b->clip.x1) area.x1 = b->clip.x1 - 1;
+    if(area.y1 >= b->clip.y1) area.y1 = b->clip.y1 - 1;
+
+    for(y = area.y0; y <= area.y1; y++) {
+        nodes = 0;
+        j = n - 1;
+
+        for(i = 0; i < n; i++) {
+            if((points[i].y < y && points[j].y >= y)
+                || (points[j].y < y && points[i].y >= y)) {
+                nodeX[nodes++] = points[i].x + (double)(y - points[i].y) * (points[j].x - points[i].x) / (points[j].y - points[i].y);
+            }
+            j = i;
+        }
+
+        assert(nodes < n);
+        if(nodes < 1) continue;
+
+        i = 0;
+        while(i < nodes - 1) {
+            if(nodeX[i] > nodeX[i+1]) {
+                int swap = nodeX[i];
+                nodeX[i] = nodeX[i + 1];
+                nodeX[i + 1] = swap;
+                if(i) i--;
+            } else {
+                i++;
+            }
+        }
+
+        for(i = 0; i < nodes; i += 2) {
+            if(nodeX[i] >= area.x1)
+                break;
+            if(nodeX[i + 1] > area.x0) {
+                if(nodeX[i] < area.x0)
+                    nodeX[i] = area.x0;
+                if(nodeX[i+1] > area.x1)
+                    nodeX[i+1] = area.x1;
+
+                for(x = nodeX[i]; x <= nodeX[i+1]; x++)
+                    BM_SET(b, x, y, c);
+            }
+        }
+    }
+
+    if(nodeX != nodeX_static)
+        free(nodeX);
+}
+
 void bm_fill(Bitmap *b, int x, int y) {
-    struct node {int x; int y;}
-        *queue,
-        n;
+    BmPoint *queue, n;
     int qs = 0, /* queue size */
         mqs = 128; /* Max queue size */
     unsigned int sc, dc; /* Source and Destination colors */
@@ -4254,7 +4604,7 @@ void bm_fill(Bitmap *b, int x, int y) {
     queue[qs++] = n;
 
     while(qs > 0) {
-        struct node w,e, nn;
+        BmPoint w,e, nn;
         int i;
 
         n = queue[--qs];
@@ -4356,7 +4706,7 @@ static void fs_add_factor(Bitmap *b, int x, int y, int er, int eg, int eb, int f
     BM_SET_RGBA(b, x, y, R, G, B, 0);
 }
 
-void bm_reduce_palette(Bitmap *b, unsigned int palette[], size_t n) {
+void bm_reduce_palette(Bitmap *b, unsigned int palette[], unsigned int n) {
     /* Floyd-Steinberg (error-diffusion) dithering
         http://en.wikipedia.org/wiki/Floyd%E2%80%93Steinberg_dithering */
     int x, y;
@@ -4429,11 +4779,14 @@ static void reduce_palette_bayer(Bitmap *b, unsigned int palette[], size_t n, in
             int f = (bayer[(y & af) * dim + (x & af)] - sub);
 
             R += R * f / fac;
-            if(R > 255) R = 255; if(R < 0) R = 0;
+            if(R > 255) R = 255;
+            else if(R < 0) R = 0;
             G += G * f / fac;
-            if(G > 255) G = 255; if(G < 0) G = 0;
+            if(G > 255) G = 255;
+            else if(G < 0) G = 0;
             B += B * f / fac;
-            if(B > 255) B = 255; if(B < 0) B = 0;
+            if(B > 255) B = 255;
+            else if(B < 0) B = 0;
             oldpixel = (R << 16) | (G << 8) | B;
             newpixel = closest_color(oldpixel, palette, n);
             BM_SET(b, x, y, newpixel);
@@ -4441,12 +4794,65 @@ static void reduce_palette_bayer(Bitmap *b, unsigned int palette[], size_t n, in
     }
 }
 
-void bm_reduce_palette_OD4(Bitmap *b, unsigned int palette[], size_t n) {
+void bm_reduce_palette_OD4(Bitmap *b, unsigned int palette[], unsigned int n) {
     reduce_palette_bayer(b, palette, n, bayer4x4, 4, 17);
 }
 
-void bm_reduce_palette_OD8(Bitmap *b, unsigned int palette[], size_t n) {
+void bm_reduce_palette_OD8(Bitmap *b, unsigned int palette[], unsigned int n) {
     reduce_palette_bayer(b, palette, n, bayer8x8, 8, 65);
+}
+
+unsigned int *bm_load_palette(const char * filename, unsigned int *npal) {
+    unsigned int *pal, n = 0, an = 8;
+    FILE *f;
+    char buf[64];
+
+    if(!filename || !npal) return NULL;
+
+    *npal = 0;
+
+    f = fopen(filename, "r");
+    if(!f) return NULL;
+
+    pal = calloc(an, sizeof *pal);
+    if(!pal)
+        return NULL;
+
+    while(fgets(buf, sizeof buf, f) && n < 256) {
+        char *s, *e, *c = buf;
+        while(*c && isspace(*c)) c++;
+        s = c;
+        if(!*s) continue;
+        while(*c) {
+            if(*c == ';') {
+                *c = '\0';
+                break;
+            }
+            c++;
+        }
+        e = c - 1;
+        while(e > s && isspace(*e)) {
+            *e = '\0';
+            e--;
+        }
+        if(e <= s) continue;
+
+        pal[n++] = bm_atoi(s);
+        if(n == an) {
+            an <<= 1;
+            pal = realloc(pal, an * sizeof *pal);
+            if(!pal)
+                return NULL;
+        }
+    }
+    fclose(f);
+
+    if(n == 0) {
+        free(pal);
+        return NULL;
+    }
+    *npal = n;
+    return pal;
 }
 
 void bm_set_font(Bitmap *b, BmFont *font) {
@@ -4558,12 +4964,12 @@ static int rf_puts(Bitmap *b, int x, int y, const char *s) {
     return 1;
 }
 
-static int rf_width(struct bitmap_font *font) {
+static int rf_width(BmFont *font) {
     assert(!strcmp(font->type, "RASTER_FONT"));
     RasterFontData *data = font->data;
     return data->width;
 }
-static int rf_height(struct bitmap_font *font) {
+static int rf_height(BmFont *font) {
     assert(!strcmp(font->type, "RASTER_FONT"));
     RasterFontData *data = font->data;
     return data->height;
@@ -4578,6 +4984,7 @@ static void rf_free_font(BmFont *font) {
 }
 
 BmFont *bm_make_ras_font(const char *file, int spacing) {
+    unsigned int bg = 0;
     BmFont *font = malloc(sizeof *font);
     font->type = "RASTER_FONT";
     font->puts = rf_puts;
@@ -4591,7 +4998,10 @@ BmFont *bm_make_ras_font(const char *file, int spacing) {
         free(font);
         return NULL;
     }
-    bm_set_color(data->bmp, 0);
+    /* The top-left character is a space, so we can safely assume that that pixel
+       is the transparent color. */
+    bg = bm_get(data->bmp, 0, 0);
+    bm_set_color(data->bmp, bg);
     /* The width/height depends on the bitmap being laid out as prescribed */
     data->width = data->bmp->w / 16;
     data->height = data->bmp->h / 6;
@@ -4769,10 +5179,13 @@ BmFont *bm_make_xbm_font(const unsigned char *bits, int spacing) {
     BmFont *font;
     XbmFontInfo *info;
     font = malloc(sizeof *font);
-    if(!font)
+    if(!font) {
+        SET_ERROR("out of memory");
         return NULL;
+    }
     info = malloc(sizeof *info);
     if(!info) {
+        SET_ERROR("out of memory");
         free(font);
         return NULL;
     }
