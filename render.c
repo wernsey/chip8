@@ -190,9 +190,12 @@ static unsigned int noise(int x, int y, unsigned int col_in) {
     if(y & 0x02) val-=4;
 
     int iR = R + val, iG = G + val, iB = B + val;
-    if(iR > 0xFF) iR = 0xFF; if(iR < 0) iR = 0;
-    if(iG > 0xFF) iG = 0xFF; if(iG < 0) iG = 0;
-    if(iB > 0xFF) iB = 0xFF; if(iB < 0) iB = 0;
+    if(iR > 0xFF) iR = 0xFF;
+    if(iR < 0) iR = 0;
+    if(iG > 0xFF) iG = 0xFF;
+    if(iG < 0) iG = 0;
+    if(iB > 0xFF) iB = 0xFF;
+    if(iB < 0) iB = 0;
     return bm_rgb(iR, iG, iB);
 }
 #endif

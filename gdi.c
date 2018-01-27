@@ -1,10 +1,10 @@
 /**
- * Win32 application that allows rendering directly to a GDI contexts 
+ * Win32 application that allows rendering directly to a GDI contexts
  * through my bitmap module.
  * (for simple games without any third party dependencies)
- * 
+ *
  * ## References:
- * 
+ *
  * * The bitmap module: https://github.com/wernsey/bitmap
  * * https://www.daniweb.com/software-development/cpp/code/241875/fast-animation-with-the-windows-gdi
  * * https://www-user.tu-chemnitz.de/~heha/petzold/ch14e.htm
@@ -29,8 +29,8 @@
 
 #define VSCREEN_WIDTH    (SCREEN_WIDTH * (EPX_SCALE?2:1))
 #define VSCREEN_HEIGHT   (SCREEN_HEIGHT * (EPX_SCALE?2:1))
-#define WINDOW_WIDTH 	(VSCREEN_WIDTH * SCREEN_SCALE)
-#define WINDOW_HEIGHT 	(VSCREEN_HEIGHT * SCREEN_SCALE)
+#define WINDOW_WIDTH    (VSCREEN_WIDTH * SCREEN_SCALE)
+#define WINDOW_HEIGHT   (VSCREEN_HEIGHT * SCREEN_SCALE)
 
 /* fflush() the log file after each call to rlog()?
 I only use it for those hard to debug crashes */
@@ -235,12 +235,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             } else return DefWindowProc(hwnd, message, wParam, lParam);
             break;
         case WM_KEYDOWN:
-            if (ESCAPE_QUITS && VK_ESCAPE == wParam) {
+            if (wParam == VK_F12) {
+
+                char filename[128];
+                time_t t;
+                struct tm *tmp;
+
+                t = time(NULL);
+                tmp = localtime(&t);
+                strftime(filename, sizeof filename, "screen-%Y%m%d%H%M%S.bmp", tmp);
+                bm_save(screen, filename);
+
+            } else if (ESCAPE_QUITS && VK_ESCAPE == wParam) {
                 DestroyWindow(hwnd);
             } else if (wParam < MAX_KEYS) {
                 keys[wParam] = 1;
                 pressed_key = wParam | 0xFFFF0000;
-            }            
+            }
             break;
         case WM_KEYUP:
             if (wParam < MAX_KEYS) {
@@ -253,21 +264,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         {
             mouse_x = LOWORD(lParam) * SCREEN_WIDTH / WINDOW_WIDTH;
             mouse_y = HIWORD(lParam) * SCREEN_HEIGHT / WINDOW_HEIGHT;
-			mdown = 1;
-			mrelease = 0;
-			mclick = 1;
+            mdown = 1;
+            mrelease = 0;
+            mclick = 1;
         } break;
-		
+
         case WM_LBUTTONUP:
         {
-			mdown = 0;
-			mrelease = 1;
+            mdown = 0;
+            mrelease = 1;
         } break;
         case WM_MOUSEMOVE:
         {
             mouse_x = LOWORD(lParam) * SCREEN_WIDTH / WINDOW_WIDTH;
             mouse_y = HIWORD(lParam) * SCREEN_HEIGHT / WINDOW_HEIGHT;
-			mmove = 1;
+            mmove = 1;
         } break;
         case WM_PAINT:
         {
@@ -367,10 +378,10 @@ int APIENTRY WinMain(
 
             if(!render(elapsedSeconds)) {
                 DestroyWindow(hwnd);
-            } else {                
+            } else {
                 if(show_fps && n_elapsed > 0) {
                     double sum = 0;
-                    int i, n = n_elapsed > 0xFF ? 0xFF : n_elapsed; 
+                    int i, n = n_elapsed > 0xFF ? 0xFF : n_elapsed;
                     for(i = 0; i < n; i++) sum += frameTimes[i];
                     double avg = sum / n;
                     double fps = 1.0 / avg;
@@ -384,12 +395,12 @@ int APIENTRY WinMain(
                 }
                 frameTimes[(n_elapsed++) & 0xFF] = elapsedSeconds;
             }
-            
+
             InvalidateRect(hwnd, 0, TRUE);
             elapsedSeconds = 0.0;
             pressed_key = 0;
-			mrelease = 0;
-			mmove = 0;
+            mrelease = 0;
+            mmove = 0;
             mclick = 0;
         }
         endTime = clock();
