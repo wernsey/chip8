@@ -33,10 +33,10 @@ chip8.o: chip8.c chip8.h
 
 bmp.o: bmp.c bmp.h
 
-render-sdl.o: render.c chip8.h pocadv.h bmp.h
+render-sdl.o: render.c chip8.h sdl/pocadv.h bmp.h
 	$(CC) $(CFLAGS) $< -o $@
 
-pocadv.o: pocadv.c pocadv.h bmp.h
+pocadv.o: sdl/pocadv.c sdl/pocadv.h bmp.h
 	$(CC) $(CFLAGS) $< -o $@
 
 .PHONY : clean

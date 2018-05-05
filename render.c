@@ -9,14 +9,18 @@
 #include <assert.h>
 
 #if defined(SDL2) || defined(SDL) || defined(__EMSCRIPTEN__)
-#  include "pocadv.h"
+#  include "sdl/pocadv.h"
 #else
 #  include <windows.h>
-#  include "gdi.h"
+#  include "gdi/gdi.h"
 #endif
 
-#define CRT_BLUR
-#define CRT_NOISE
+#ifndef CRT_BLUR
+#  define CRT_BLUR	0
+#endif
+#ifndef CRT_NOISE
+#  define CRT_NOISE	0
+#endif
 
 #include "chip8.h"
 #include "bmp.h"
@@ -153,7 +157,7 @@ void deinit_game() {
     rlog("Done.");
 }
 
-#ifdef CRT_BLUR
+#if CRT_BLUR
 static void add_bitmaps(Bitmap *b1, Bitmap *b2) {
     int x,y;
     assert(b1->w == b2->w && b1->h == b2->h);
@@ -170,7 +174,7 @@ static void add_bitmaps(Bitmap *b1, Bitmap *b2) {
 static unsigned char oldscreen_buffer[SCREEN_WIDTH * SCREEN_HEIGHT * 4];
 static unsigned char plotscreen_buffer[SCREEN_WIDTH * SCREEN_HEIGHT * 4];
 #endif
-#ifdef CRT_NOISE
+#if CRT_NOISE
 static long nz_seed = 0L;
 static long nz_rand() {
     nz_seed = nz_seed * 1103515245L + 12345L;
@@ -228,7 +232,7 @@ static void draw_screen() {
     w = chip8_screen.w;
     h = chip8_screen.h;
 
-#ifdef CRT_BLUR
+#if CRT_BLUR
     Bitmap plotscreen;
     bm_bind_static(&plotscreen, plotscreen_buffer, SCREEN_WIDTH, SCREEN_HEIGHT);
 
@@ -249,7 +253,7 @@ static void draw_screen() {
     bm_blit_ex(screen, 0, 0, screen->w, screen->h, &chip8_screen, 0, 0, w, h, 0);
 #endif
 
-#ifdef CRT_NOISE
+#if CRT_NOISE
     int x, y;
     nz_srand(1234);
     for(y = 0; y < screen->h; y++) {
@@ -261,7 +265,7 @@ static void draw_screen() {
      }
 #endif
 
-#ifdef CRT_BLUR
+#if CRT_BLUR
     memcpy(plotscreen.data, screen->data, SCREEN_WIDTH * SCREEN_HEIGHT * 4);
 #endif
 }

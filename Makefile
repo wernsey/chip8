@@ -1,6 +1,6 @@
 # Makefile for Linux and Windows (MinGW)
 CC=gcc
-CFLAGS=-c -Wall
+CFLAGS=-c -Wall -I.
 LDFLAGS=-lm
 
 # Detect operating system:
@@ -46,9 +46,9 @@ dasmmain.o: dasmmain.c chip8.h
 # SDL specific:
 chip8: pocadv.o render-sdl.o chip8.o bmp.o
 	$(CC) $^ $(LDFLAGS) `sdl2-config --libs` -o $@
-render-sdl.o: render.c chip8.h pocadv.h app.h bmp.h
+render-sdl.o: render.c chip8.h sdl/pocadv.h app.h bmp.h
 	$(CC) $(CFLAGS) -DSDL2 `sdl2-config --cflags` $< -o $@
-pocadv.o: pocadv.c pocadv.h app.h bmp.h
+pocadv.o: sdl/pocadv.c sdl/pocadv.h app.h bmp.h
 	$(CC) $(CFLAGS) -DSDL2 `sdl2-config --cflags` $< -o $@
 
 # Example
@@ -60,9 +60,10 @@ GAMES/CUBE8.ch8 : examples/cube.asm ./c8asm
 # Windows GDI-version specific:
 chip8-gdi: gdi.o render-gdi.o chip8.o bmp.o
 	$(CC) $^ -o $@ $(LDFLAGS)
-render-gdi.o: render.c chip8.h gdi.h app.h bmp.h
+render-gdi.o: render.c chip8.h gdi/gdi.h app.h bmp.h
 	$(CC) $(CFLAGS) -DGDI $< -o $@
-gdi.o: gdi.c gdi.h app.h bmp.h
+gdi.o: gdi/gdi.c gdi/gdi.h app.h bmp.h
+	$(CC) $(CFLAGS) -DGDI $< -o $@
 
 # Documentation
 docs: chip8-api.html

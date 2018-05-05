@@ -8,3 +8,6 @@
 
 /* Set to one to make ESC quit the game - when debugging */
 #define ESCAPE_QUITS	1
+
+#define CRT_NOISE 0
+#define CRT_BLUR  0
