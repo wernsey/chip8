@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <math.h>
 #include <time.h>
 #include <stdarg.h>
@@ -24,6 +25,10 @@ int quit = 0;
 #define VSCREEN_HEIGHT   (SCREEN_HEIGHT * (EPX_SCALE?2:1))
 #define WINDOW_WIDTH 	(VSCREEN_WIDTH * SCREEN_SCALE)
 #define WINDOW_HEIGHT 	(VSCREEN_HEIGHT * SCREEN_SCALE)
+
+#ifndef LOG_FILE_NAME
+#  define LOG_FILE_NAME "sdl-game.log"
+#endif
 
 #ifndef SDL2
 static SDL_Surface *window;
@@ -99,12 +104,19 @@ static int handleKeys(SDLKey key) {
     case KCODE(F12):  {
 		/* F12 for screenshots; Doesn't make sense in the browser. */
 		char filename[128];
-		time_t t;
-		struct tm *tmp;
 
+#ifdef _MSC_VER 
+		time_t t = time(NULL);
+		struct tm buf, *ptr = &buf;
+		localtime_s(ptr, &t);
+#else
+		time_t t;
+		struct tm *ptr;
 		t = time(NULL);
-		tmp = localtime(&t);
-		strftime(filename, sizeof filename, "screen-%Y%m%d%H%M%S.bmp", tmp);
+		ptr = localtime(&t);
+#endif
+		strftime(filename, sizeof filename, "screen-%Y%m%d%H%M%S.bmp", ptr);
+
 		bm_save(screen, filename);
 	} return 1;
 #endif
@@ -121,7 +133,7 @@ char *readfile(const char *fname) {
 		return NULL;
 
 	FSEEK(f, 0, SEEK_END);
-	len = FTELL(f);
+	len = (long)FTELL(f);
 	REWIND(f);
 
 	if(!(str = malloc(len+2)))
@@ -392,12 +404,22 @@ int main(int argc, char *argv[]) {
 #ifdef __EMSCRIPTEN__
 	logfile = stdout;
 #else
-	logfile = fopen("pocadv.log", "w");
+	//logfile = fopen("pocadv.log", "w");
+
+#  ifdef _MSC_VER
+	errno_t err = fopen_s(&logfile, LOG_FILE_NAME, "w");
+	if (err != 0)
+		return 1;
+#  else
+	logfile = fopen(LOG_FILE_NAME, "w");
+	if (!logfile)
+		return 1;
+#  endif
 #endif
 
     rlog("%s: Application Running", WINDOW_CAPTION);
 
-    srand(time(NULL));
+    srand((unsigned int)time(NULL));
 
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
 

@@ -71,7 +71,17 @@ extern int render(double elapsedSeconds);
 #define KEY_y 0x59
 #define KEY_z 0x5A
 
+#define KEY_LEFTBRACKET     0xDB
+#define KEY_RIGHTBRACKET    0xDD
+#define KEY_COMMA           0xBC
+#define KEY_PERIOD          0xBE
+#define KEY_SLASH           0xBF
+#define KEY_SEMICOLON       0xBA
+#define KEY_BACKSLASH       0xDC
+#define KEY_APOSTROPHE      0xDE
+
 #define KCODE(x) KEY_ ## x
+#define KCODEA(x,X) KEY_ ## x
 
 extern Bitmap *screen;
 

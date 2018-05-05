@@ -22,6 +22,9 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+
+#define __STDC_WANT_LIB_EXT1__ 1
+
 #include <windows.h>
 
 #include "bmp.h"
@@ -36,6 +39,10 @@
 I only use it for those hard to debug crashes */
 #ifndef FLUSH
 #  define FLUSH 0
+#endif
+
+#ifndef LOG_FILE_NAME
+#  define LOG_FILE_NAME "gdi-game.log"
 #endif
 
 static char szAppName[] = WINDOW_CAPTION;
@@ -118,10 +125,15 @@ void exit_error(const char *msg, ...) {
         va_list arg;
         va_start (arg, msg);
         vsnprintf (message_text, (sizeof message_text) - 1, msg, arg);
+		message_text[(sizeof message_text) - 1] = '\0';
         va_end (arg);
         fputc('\n', logfile);
-    }
-    fputs(message_text, logfile);
+	} else {
+		message_text[0] = '\0';
+	}
+	if (logfile) {
+		fputs(message_text, logfile);
+	}
     MessageBox(
         NULL,
         message_text,
@@ -175,6 +187,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
             hdc = GetDC( hwnd );
             hbmp = CreateDIBSection( hdc, &bmi, DIB_RGB_COLORS, (void**)&pixels, NULL, 0 );
+			if (!hbmp) {
+				exit_error("CreateDIBSection");
+				return 0;
+			}
 
             hdcMem = CreateCompatibleDC( hdc );
             hbmOld = (HBITMAP)SelectObject( hdcMem, hbmp );
@@ -190,7 +206,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
             clear_keys();
 
-            cmdl = strdup(GetCommandLine());
+            cmdl = _strdup(GetCommandLine());
             argc = split_cmd_line(cmdl, argv, MAX_ARGS);
 
             init_game(argc, argv);
@@ -238,12 +254,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             if (wParam == VK_F12) {
 
                 char filename[128];
-                time_t t;
-                struct tm *tmp;
-
-                t = time(NULL);
-                tmp = localtime(&t);
-                strftime(filename, sizeof filename, "screen-%Y%m%d%H%M%S.bmp", tmp);
+#ifdef _MSC_VER 
+				time_t t = time(NULL);
+				struct tm buf, *ptr = &buf;
+				localtime_s(ptr, &t);
+#else
+				time_t t;
+				struct tm *ptr;
+				t = time(NULL);
+				ptr = localtime(&t);
+#endif
+                strftime(filename, sizeof filename, "screen-%Y%m%d%H%M%S.bmp", ptr);
                 bm_save(screen, filename);
 
             } else if (ESCAPE_QUITS && VK_ESCAPE == wParam) {
@@ -321,7 +342,17 @@ int APIENTRY WinMain(
     HWND hwnd;
     double elapsedSeconds = 0.0;
 
-    logfile = fopen("gdifw.log", "w");
+#ifdef _MSC_VER
+    errno_t err = fopen_s(&logfile, LOG_FILE_NAME, "w");
+	if (err != 0) {
+		exit_error("Unable to open log file `%s`");
+	}
+#else
+	logfile = fopen(LOG_FILE_NAME, "w");
+	if(!logfile) {
+		exit_error("Unable to open log file `%s`");
+	}
+#endif
 
     rlog("%s","GDI Framework: Application Running");
 
@@ -545,8 +576,15 @@ char *readfile(const char *fname) {
     size_t len, r;
     char *bytes;
 
-    if(!(f = fopen(fname, "rb")))
+#ifdef _MSC_VER
+	errno_t err = fopen_s(&f, fname, "rb");
+	if(err != 0)
         return NULL;
+#else
+	f = fopen(fname, "rb");
+	if (!f)
+		return NULL;
+#endif
 
     fseek(f, 0, SEEK_END);
     len = ftell(f);

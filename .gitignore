@@ -10,7 +10,7 @@ c8dasm
 chip8.js
 chip8.data
 
-# Log files, screenshots
+# Log files, screenshots...
 *.log
 screen-*.bmp
 
