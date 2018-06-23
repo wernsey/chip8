@@ -10,7 +10,7 @@ The syntax of the assembler and disassembler is based on the syntax described
 in [Cowgod's Chip-8 Technical Reference
 v1.0](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM), by Thomas P. Greene
 
-Frédéric Devernay's [SVision-8 website](http://devernay.free.fr/hacks/chip8/)
+FrÃ©dÃ©ric Devernay's [SVision-8 website](http://devernay.free.fr/hacks/chip8/)
 has a wealth of information. He also has a collection of CHIP-8 games and
 programs in his [GAMES.zip](http://devernay.free.fr/hacks/chip8/GAMES.zip).
 
@@ -40,7 +40,7 @@ specified it will default to `a.c8h`.
 To use the disassembler, run the command
 	
     $ c8dasm a.ch8 > outfile.asm
-	
+
 where `a.ch8` is the file you want to disassemble.
 
 ## Interpreter Implementations

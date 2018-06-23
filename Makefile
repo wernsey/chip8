@@ -66,10 +66,13 @@ gdi.o: gdi/gdi.c gdi/gdi.h app.h bmp.h
 	$(CC) $(CFLAGS) -DGDI $< -o $@
 
 # Documentation
-docs: chip8-api.html
+docs: chip8-api.html README.html
 
 chip8-api.html: chip8.h d.awk
-	awk -f d.awk -v Theme=7 chip8.h > $@
+	awk -f d.awk -v Theme=7 $< > $@
+
+README.html: README.md d.awk
+	awk -f d.awk -v Theme=7 -v Clean=1 $< > $@
 
 .PHONY : clean wipe
 
@@ -78,5 +81,5 @@ wipe:
 
 clean: wipe
 	-rm -f c8asm chip8 c8dasm *.exe
-	-rm -f chip8-api.html
+	-rm -f chip8-api.html README.html
 	-rm -f *.log *.bak
