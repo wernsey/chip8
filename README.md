@@ -97,6 +97,13 @@ Emscripten-generated JavaScript. If you want to use this implementation:
 3. Change the `Module.arguments` variable in the JavaScript in `chip8.html`
 4. Serve `chip8.html` in a web server.
 
+I built the emscripten version through the emscripten SDK installed
+according to the [installation instructions][emscripten-install]. I had
+some linker errors with Ubuntu's `emscripten` package that I couldn't
+resolve.
+
+[emscripten-install]: http://kripken.github.io/emscripten-site/docs/getting_started/downloads.html#sdk-download-and-install
+
 ### Win32/GDI Implementation
 
 The native Windows version uses a simple hook around the Win32 GDI and requires

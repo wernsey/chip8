@@ -9,6 +9,7 @@ c8dasm
 # emscripten generated code
 chip8.js
 chip8.data
+*.wasm
 
 # Log files, screenshots
 *.log

@@ -15,8 +15,11 @@
 #  include "gdi.h"
 #endif
 
+/*
+ * Experimental flags so pretend we're running on a CRT 
 #define CRT_BLUR
 #define CRT_NOISE
+*/
 
 #include "chip8.h"
 #include "bmp.h"

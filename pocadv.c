@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <ctype.h>
 #include <time.h>
 #include <stdarg.h>
 #include <assert.h>
@@ -350,6 +351,10 @@ void exit_error(const char *fmt, ...) {
     }
 	if(logfile != stdout && logfile != stderr)
 		fclose(logfile);
+	else { 
+		fflush(stdout);
+		fflush(stderr);
+	}
     exit(1);
 }
 

@@ -4466,7 +4466,7 @@ void bm_bezier3(Bitmap *b, int x0, int y0, int x1, int y1, int x2, int y2) {
     } else {
       /* https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line */
       double denom = sqrt(dx * dx + dy * dy);
-      double dist = fabs((y2 - y0) * x1 - (x2 - x0) * y1 + x2 * y0 + y2 * x0)/denom;
+      double dist = fabs((double)((y2 - y0) * x1 - (x2 - x0) * y1 + x2 * y0 + y2 * x0))/denom;
       steps = sqrt(dist);
       if(steps == 0) steps = 1;
     }
