@@ -27,7 +27,7 @@
 
 #include <windows.h>
 
-#include "bmp.h"
+#include "../bmp.h"
 #include "gdi.h"
 
 #define VSCREEN_WIDTH    (SCREEN_WIDTH * (EPX_SCALE?2:1))
@@ -50,6 +50,10 @@ static char szTitle[]   = WINDOW_CAPTION " - GDI";
 
 Bitmap *screen = NULL;
 
+static Bitmap *cursor = NULL;
+static int cursor_hsx, cursor_hsy;
+static Bitmap *cursor_back = NULL;
+
 /* Virtual-Key Codes here:
 https://msdn.microsoft.com/en-us/library/windows/desktop/dd375731(v=vs.85).aspx */
 #define MAX_KEYS 256
@@ -59,7 +63,7 @@ static int pressed_key = 0;
 int mouse_x, mouse_y;
 static int mclick = 0, mdown = 0, mrelease = 0, mmove = 0;
 
-static int quit;
+int quit = 0;
 
 static int show_fps = 0;
 static double frameTimes[256];
@@ -125,15 +129,15 @@ void exit_error(const char *msg, ...) {
         va_list arg;
         va_start (arg, msg);
         vsnprintf (message_text, (sizeof message_text) - 1, msg, arg);
-		message_text[(sizeof message_text) - 1] = '\0';
+        message_text[(sizeof message_text) - 1] = '\0';
         va_end (arg);
         fputc('\n', logfile);
-	} else {
-		message_text[0] = '\0';
-	}
-	if (logfile) {
-		fputs(message_text, logfile);
-	}
+    } else {
+        message_text[0] = '\0';
+    }
+    if (logfile) {
+        fputs(message_text, logfile);
+    }
     MessageBox(
         NULL,
         message_text,
@@ -141,6 +145,25 @@ void exit_error(const char *msg, ...) {
         MB_ICONERROR | MB_OK
     );
     exit(1);
+}
+
+void set_cursor(Bitmap *b, int hsx, int hsy) {
+    cursor_hsx = hsx;
+    cursor_hsy = hsy;
+    cursor = b;
+    if(b) {
+        if(!cursor_back)
+            cursor_back = bm_create(b->w, b->h);
+        else if(cursor_back->w != b->w || cursor_back->h != b->h) {
+            bm_free(cursor_back);
+            cursor_back = bm_create(b->w, b->h);
+        }
+        ShowCursor(0);
+    } else {
+        bm_free(cursor_back);
+        cursor_back = NULL;
+        ShowCursor(1);
+    }
 }
 
 /** WIN32 and GDI routines below this line *****************************************/
@@ -187,10 +210,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
             hdc = GetDC( hwnd );
             hbmp = CreateDIBSection( hdc, &bmi, DIB_RGB_COLORS, (void**)&pixels, NULL, 0 );
-			if (!hbmp) {
-				exit_error("CreateDIBSection");
-				return 0;
-			}
+            if (!hbmp) {
+                exit_error("CreateDIBSection");
+                return 0;
+            }
 
             hdcMem = CreateCompatibleDC( hdc );
             hbmOld = (HBITMAP)SelectObject( hdcMem, hbmp );
@@ -254,15 +277,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             if (wParam == VK_F12) {
 
                 char filename[128];
-#ifdef _MSC_VER 
-				time_t t = time(NULL);
-				struct tm buf, *ptr = &buf;
-				localtime_s(ptr, &t);
+#ifdef _MSC_VER
+                time_t t = time(NULL);
+                struct tm buf, *ptr = &buf;
+                localtime_s(ptr, &t);
 #else
-				time_t t;
-				struct tm *ptr;
-				t = time(NULL);
-				ptr = localtime(&t);
+                time_t t;
+                struct tm *ptr;
+                t = time(NULL);
+                ptr = localtime(&t);
 #endif
                 strftime(filename, sizeof filename, "screen-%Y%m%d%H%M%S.bmp", ptr);
                 bm_save(screen, filename);
@@ -307,6 +330,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint( hwnd, &ps );
 
+            int cx = 0, cy = 0;
+            if(cursor) {
+                cx = mouse_x - cursor_hsx;
+                cy = mouse_y - cursor_hsy;
+
+                bm_blit(cursor_back, 0, 0, screen, cx, cy, cursor->w, cursor->h);
+                bm_maskedblit(screen, cx, cy, cursor, 0, 0, cursor->w, cursor->h);
+            }
+
 #if EPX_SCALE
             scale_epx_i(screen, epx);
 #endif
@@ -317,6 +349,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             StretchBlt(hdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, hdcMem, 0, 0, VSCREEN_WIDTH, VSCREEN_HEIGHT, SRCCOPY);
 #endif
             EndPaint( hwnd, &ps );
+
+            if(cursor) {
+                bm_maskedblit(screen, cx, cy, cursor_back, 0, 0, cursor_back->w, cursor_back->h);
+            }
+
             break;
         }
         /* Don't erase the background - it causes flickering
@@ -344,14 +381,14 @@ int APIENTRY WinMain(
 
 #ifdef _MSC_VER
     errno_t err = fopen_s(&logfile, LOG_FILE_NAME, "w");
-	if (err != 0) {
-		exit_error("Unable to open log file `%s`");
-	}
+    if (err != 0) {
+        exit_error("Unable to open log file `%s`");
+    }
 #else
-	logfile = fopen(LOG_FILE_NAME, "w");
-	if(!logfile) {
-		exit_error("Unable to open log file `%s`");
-	}
+    logfile = fopen(LOG_FILE_NAME, "w");
+    if(!logfile) {
+        exit_error("Unable to open log file `%s`");
+    }
 #endif
 
     rlog("%s","GDI Framework: Application Running");
@@ -475,6 +512,16 @@ Alternative to CommandLineToArgvW().
 I used a compiler where shellapi.h was not available,
 so this function breaks it down according to the last set of rules in
 http://i1.blogs.msdn.com/b/oldnewthing/archive/2010/09/17/10063629.aspx
+
+Only a long time after I wrote this did I discover that you can actually
+use __argc, __argv to access the commandline parameters...
+
+extern "C" int __stdcall WinMain( struct HINSTANCE__*, struct HINSTANCE__*, char*, int ) {
+    return main( __argc, __argv );
+}
+
+http://www.testdeveloper.com/2010/03/16/a-few-ways-to-access-argc-and-argv-in-c/
+
 */
 static int split_cmd_line(char *cmdl, char *argv[], int max) {
 
@@ -577,13 +624,13 @@ char *readfile(const char *fname) {
     char *bytes;
 
 #ifdef _MSC_VER
-	errno_t err = fopen_s(&f, fname, "rb");
-	if(err != 0)
+    errno_t err = fopen_s(&f, fname, "rb");
+    if(err != 0)
         return NULL;
 #else
-	f = fopen(fname, "rb");
-	if (!f)
-		return NULL;
+    f = fopen(fname, "rb");
+    if (!f)
+        return NULL;
 #endif
 
     fseek(f, 0, SEEK_END);
@@ -603,4 +650,8 @@ char *readfile(const char *fname) {
     bytes[len] = '\0';
 
     return bytes;
+}
+
+Bitmap *get_bmp(const char *filename) {
+    return bm_load(filename);
 }

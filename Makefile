@@ -1,6 +1,6 @@
 # Makefile for Linux and Windows (MinGW)
 CC=gcc
-CFLAGS=-c -Wall -I.
+CFLAGS=-c -Wall
 LDFLAGS=-lm
 
 # Detect operating system:

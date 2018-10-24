@@ -1,10 +1,6 @@
-#include "bmp.h"
+#include "../bmp.h"
 
-#include "app.h"
-
-extern void init_game(int argc, char *argv[]);
-extern void deinit_game();
-extern int render(double elapsedSeconds);
+#include "../app.h"
 
 #define FPS 33
 
@@ -88,6 +84,10 @@ extern Bitmap *screen;
 /* See the KEY_* defines above */
 extern char keys[];
 
+extern int quit;
+
+extern int show_debug();
+
 /*
 If the return value < 128 it is an ASCII code,
 otherwise it is special.
@@ -100,6 +100,8 @@ extern int mouse_down();
 extern int mouse_moved();
 extern int mouse_x, mouse_y;
 
+extern void set_cursor(Bitmap *b, int hsx, int hsy);
+
 extern void rlog(const char *fmt, ...);
 
 extern void rerror(const char *fmt, ...);
@@ -108,4 +110,9 @@ extern void exit_error(const char *msg, ...);
 
 extern char *readfile(const char *fname);
 
-extern int show_debug();
+extern Bitmap *get_bmp(const char *filename);
+
+/* These functions should be provided elsewhere */
+extern void init_game(int argc, char *argv[]);
+extern void deinit_game();
+extern int render(double elapsedSeconds);

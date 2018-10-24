@@ -39,9 +39,9 @@
 #include <emscripten.h>
 #endif
 
-#include "app.h"
+#include "../app.h"
 
-#include "bmp.h"
+#include "../bmp.h"
 
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define MAX(a,b) ((a)>(b)?(a):(b))
@@ -62,16 +62,6 @@ extern int quit;
 
 extern int show_debug();
 
-extern Bitmap *get_bmp(const char *filename);
-
-extern char *readfile(const char *fname);
-
-extern void rlog(const char *fmt, ...);
-
-extern void rerror(const char *fmt, ...);
-
-extern void exit_error(const char *msg, ...);
-
 extern int key_pressed();
 
 extern int mouse_clicked();
@@ -79,6 +69,18 @@ extern int mouse_released();
 extern int mouse_down();
 extern int mouse_moved();
 extern int mouse_x, mouse_y;
+
+extern void set_cursor(Bitmap *b, int hsx, int hsy);
+
+extern void rlog(const char *fmt, ...);
+
+extern void rerror(const char *fmt, ...);
+
+extern void exit_error(const char *msg, ...);
+
+extern char *readfile(const char *fname);
+
+extern Bitmap *get_bmp(const char *filename);
 
 /* These functions should be provided elsewhere */
 extern void init_game(int argc, char *argv[]);
