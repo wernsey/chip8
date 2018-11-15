@@ -84,7 +84,7 @@ static void usage() {
                 "  -b bg  : Background color\n"
                 "  -s spd : Specify the speed\n"
                 "  -d     : Debug mode\n"
-                "  -v     : increase verbosity"
+                "  -v     : increase verbosity\n"
                 );
 }
 
@@ -102,16 +102,14 @@ void init_game(int argc, char *argv[]) {
     bg_color = bm_byte_order(bg_color);
 
     int opt;
-    while((opt = getopt(argc, argv, "f:b:s:dv?")) != -1) {
+    while((opt = getopt(argc, argv, "f:b:s:dvh")) != -1) {
         switch(opt) {
             case 'v': c8_verbose++; break;
             case 'f': fg_color = bm_atoi(optarg); break;
             case 'b': bg_color = bm_atoi(optarg); break;
             case 's': speed = atoi(optarg); if(speed < 1) speed = 10; break;
             case 'd': running = 0; break;
-            case '?' : {
-                usage();
-            }
+            case 'h': usage(); break;
         }
     }
 
