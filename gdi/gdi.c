@@ -384,6 +384,8 @@ int APIENTRY WinMain(
     if (err != 0) {
         exit_error("Unable to open log file `%s`");
     }
+#elif defined NO_OPEN_LOG
+    logfile = LOG_FILE_NAME;
 #else
     logfile = fopen(LOG_FILE_NAME, "w");
     if(!logfile) {
