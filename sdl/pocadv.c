@@ -460,6 +460,8 @@ int main(int argc, char *argv[]) {
     errno_t err = fopen_s(&logfile, LOG_FILE_NAME, "w");
     if (err != 0)
         return 1;
+#  elif defined NO_OPEN_LOG
+	logfile = LOG_FILE_NAME;
 #  else
     logfile = fopen(LOG_FILE_NAME, "w");
     if (!logfile)
