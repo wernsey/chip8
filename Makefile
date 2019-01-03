@@ -14,11 +14,11 @@ endif
 
 ifeq ($(BUILD),debug)
   # Debug
-  CFLAGS += -O0 -g -I/local/include
+  CFLAGS += -O0 -g
   LDFLAGS +=
 else
   # Release mode
-  CFLAGS += -O2 -DNDEBUG -I/local/include
+  CFLAGS += -O2 -DNDEBUG
   LDFLAGS += -s
 endif
 
@@ -77,7 +77,7 @@ README.html: README.md d.awk
 .PHONY : clean wipe
 
 wipe:
-	-rm -f *.o
+	-rm -f *.o sdl/*.o gdi/*.o
 
 clean: wipe
 	-rm -f c8asm chip8 c8dasm *.exe
