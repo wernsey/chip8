@@ -211,7 +211,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             hdc = GetDC( hwnd );
             hbmp = CreateDIBSection( hdc, &bmi, DIB_RGB_COLORS, (void**)&pixels, NULL, 0 );
             if (!hbmp) {
-                exit_error("CreateDIBSection");
+                exit_error("CreateDIBSection\n");
                 return 0;
             }
 
