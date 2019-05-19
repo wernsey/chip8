@@ -114,13 +114,13 @@ void init_game(int argc, char *argv[]) {
     }
 
     if(optind >= argc) {
-        exit_error("You need to specify a CHIP-8 file.");
+        exit_error("You need to specify a CHIP-8 file.\n");
     }
     infile = argv[optind++];
 
     rlog("Loading %s...", infile);
     if(!c8_load_file(infile)) {
-        exit_error("Unable to load '%s': %s", infile, strerror(errno));
+        exit_error("Unable to load '%s': %s\n", infile, strerror(errno));
     }
 
     bm_set_color(screen, 0x202020);
