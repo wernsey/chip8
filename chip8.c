@@ -460,6 +460,8 @@ uint16_t c8_get_pc() {
 uint16_t c8_prog_size() {
 	uint16_t n;
 	for(n = TOTAL_RAM - 1; n > PROG_OFFSET && RAM[n] == 0; n--);
+	if(++n & 0x1) // Fix for #4
+		return n + 1;
 	return n;
 }
 
@@ -573,7 +575,7 @@ char *c8_load_txt(const char *fname) {
 
 int c8_save_file(const char *fname) {
 	uint16_t n = c8_prog_size();
-	size_t len = n - PROG_OFFSET + 1;
+	size_t len = n - PROG_OFFSET;
 	FILE *f = fopen(fname, "wb");
 	if(!f)
 		return 0;
