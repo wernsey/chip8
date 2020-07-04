@@ -299,7 +299,7 @@ int render(double elapsedSeconds) {
         if(keys[k]) {
             key_pressed = 1;
             c8_key_down(i);
-#ifndef NDEBUG
+#if !defined(NDEBUG) && 0
             rlog("key pressed: %X 0x%02X", i, k);
 #endif
         } else

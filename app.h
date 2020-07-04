@@ -3,7 +3,7 @@
 #define NO_OPEN_LOG     1
 #define LOG_FILE_NAME   stderr
 #define EPX_SCALE       0
-#define SCREEN_SCALE    2
+#define SCREEN_SCALE    4
 
 #define SCREEN_WIDTH    128
 #define SCREEN_HEIGHT   64

@@ -404,16 +404,16 @@ void c8_step() {
 					if(I + x > TOTAL_RAM)
 						x = TOTAL_RAM - I;
 					assert(I + x <= TOTAL_RAM);
-					if(x > 0)
-						memcpy(RAM + I, V, x);
+					if(x >= 0)
+						memcpy(RAM + I, V, x+1);
 					break;
 				case 0x65:
 					/* LD Vx, [I] */
 					if(I + x > TOTAL_RAM)
 						x = TOTAL_RAM - I;
 					assert(I + x <= TOTAL_RAM);
-					if(x > 0)
-						memcpy(V, RAM + I, x);
+					if(x >= 0)
+						memcpy(V, RAM + I, x+1);
 					break;
 				case 0x75:
 					/* LD R, Vx */
