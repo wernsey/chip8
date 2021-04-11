@@ -52,8 +52,8 @@ pocadv.o: sdl/pocadv.c sdl/pocadv.h app.h bmp.h
 	$(CC) $(CFLAGS) -DSDL2 `sdl2-config --cflags` $< -o $@
 
 # Example
-example : GAMES/CUBE8.ch8
-GAMES/CUBE8.ch8 : examples/cube.asm ./c8asm
+example : examples/CUBE8.ch8
+examples/CUBE8.ch8 : examples/cube.asm ./c8asm
 	mkdir -p GAMES
 	./c8asm -o $@ $<
 

@@ -88,6 +88,21 @@ static void usage() {
                 );
 }
 
+#ifdef __EMSCRIPTEN__
+static int em_ready;
+void loaded_callback_func(const char *infile) {
+    rlog("Loading %s...", infile);
+    if(!c8_load_file(infile)) {
+        exit_error("Unable to load '%s': %s\n", infile, strerror(errno));
+        return;
+    }
+    em_ready = 1;
+}
+void error_callback_func(const char *s) {
+    rerror("Error loading %s", s);
+}
+#endif
+
 void init_game(int argc, char *argv[]) {
 
     const char *infile = NULL;
@@ -118,10 +133,18 @@ void init_game(int argc, char *argv[]) {
     }
     infile = argv[optind++];
 
+
+#ifdef __EMSCRIPTEN__
+    em_ready = 0;
+    rlog("emscripten_wget retrieving %s", infile);
+    //emscripten_wget(infile, infile);
+    emscripten_async_wget(infile, infile, loaded_callback_func, error_callback_func);
+#else
     rlog("Loading %s...", infile);
     if(!c8_load_file(infile)) {
         exit_error("Unable to load '%s': %s\n", infile, strerror(errno));
     }
+#endif
 
     bm_set_color(screen, 0x202020);
     bm_clear(screen);
@@ -292,6 +315,10 @@ void draw_hud() {
 int render(double elapsedSeconds) {
     int i;
     static double timer = 0.0;
+
+#ifdef __EMSCRIPTEN__
+    if(!em_ready) return 1;
+#endif
 
     int key_pressed = 0;
     for(i = 0; i < 16; i++) {

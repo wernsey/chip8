@@ -7,9 +7,7 @@ chip8
 c8dasm
 
 # emscripten generated code
-chip8.js
-chip8.data
-*.wasm
+out
 
 # Log files, screenshots...
 *.log
@@ -30,4 +28,6 @@ chip8-api.html
 README.html
 
 # http://devernay.free.fr/hacks/chip8/GAMES.zip
-GAMES/*
+GAMES
+
+.vscode

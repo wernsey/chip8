@@ -6,7 +6,7 @@
   the color oof the foreground and background, eg:
   chip8.html?background=002804&foreground=46EA74&game=GAMES/INVADERS.ch8
   -->
-	
+
   <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
@@ -20,9 +20,9 @@
       }
 
       .emscripten { padding-right: 0; margin-left: auto; margin-right: auto; display: block; }
-      div.emscripten { text-align: center; }      
-      div.emscripten_border { 
-		/*border: 1px solid #646379; 
+      div.emscripten { text-align: center; }
+      div.emscripten_border {
+		/*border: 1px solid #646379;
 		border-radius: 3px;
 		background-color:#EFEFF1; */
 		padding: 1em; }
@@ -47,7 +47,7 @@
         border-right: 5px solid rgb(235, 235, 235);
         border-bottom: 5px solid rgb(235, 235, 235);
         border-top: 5px solid rgb(120, 120, 120);
-        
+
         border-radius: 100%;
         background-color: rgb(189, 215, 46);
       }
@@ -107,10 +107,10 @@
         outline: none;
         resize: none;
       }
-      
+
     .button { border:1px solid #646379;
 			border-radius:3px;
-			cursor:pointer; 
+			cursor:pointer;
 			margin: 0.25em; padding:0.25em;
 			font-size: small; background-color:#EFEFF1;}
 	.button:hover { color: #EFEFF1; border:1px solid #EFEFF1;background-color:#646379;}
@@ -123,11 +123,11 @@
     </style>
   </head>
   <body>
-    
+
     <div id='controls'>
 	  <span style="display:none;"><input type="checkbox" id="resize">Resize canvas</span>
 	  <span style="display:none;"><input type="checkbox" id="pointerLock" checked>Lock/hide mouse pointer &nbsp;&nbsp;&nbsp;</span>
-	  <span class="button" onclick="Module.requestFullScreen(document.getElementById('pointerLock').checked, 
+	  <span class="button" onclick="Module.requestFullscreen(document.getElementById('pointerLock').checked,
 																				document.getElementById('resize').checked)">
 		Fullscreen
 	  </span>
@@ -145,7 +145,7 @@
     <div class="emscripten_border">
       <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
     </div>
-	
+
     <textarea id="output" rows="8" style="display:none;"></textarea>
 
 	<div id="help" style="display:none;">
@@ -165,15 +165,15 @@
 		<tr><td>6</td><td>'E'</td><td></td><td>E</td><td>'F'</td></tr>
 		<tr><td>7</td><td>'A'</td><td></td><td>F</td><td>'V'</td></tr>
 		</table>
-		
+
 	</div>
 
     <script type='text/javascript'>
       var statusElement = document.getElementById('status');
       var progressElement = document.getElementById('progress');
       var spinnerElement = document.getElementById('spinner');
-      
-      
+
+
       /* https://css-tricks.com/snippets/javascript/get-url-variables/ */
       function getQueryVariable(variable) {
 		var query = window.location.search.substring(1);
@@ -184,7 +184,7 @@
 		}
 		return(false);
 	  }
-	  
+
 	  function toggle(id) {
 	    var output=document.getElementById(id);
 	    output.style.display=(output.style.display=="none")?"block":"none";
@@ -192,14 +192,9 @@
 
       var Module = {
         preRun: [],
-        postRun: [], 
-        /* This is a bit unfortunate: the GAMES/*.ch8 files were compiled
-			into the chip8.data file through emscripten's `--preload-file`
-			option, so you can't add any games without recompiling.
-		It is on my todo list to do something about it, but it isn't high
-		priority at the moment. */
-        arguments: ["-f", getQueryVariable("foreground") || "#AAAAFF", 
-					"-b", getQueryVariable("background") || "#000055", 
+        postRun: [],
+        arguments: ["-f", getQueryVariable("foreground") || "#AAAAFF",
+					"-b", getQueryVariable("background") || "#000055",
 					getQueryVariable("game") || "GAMES/CUBE8.ch8"],
         print: (function() {
           var element = document.getElementById('output');

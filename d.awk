@@ -31,9 +31,14 @@
 # - `-vPretty=1` enable Syntax highlighting with Google's code prettify
 #        https://github.com/google/code-prettify
 # - `-vHideToCLevel=n` specifies the level of the ToC that should be collapsed by default.
+# - `-vLang=n` specifies the value of the `lang` attribute of the <html> tag; Default = "en"
 # - `-vclassic_underscore=1` words_with_underscores behave like old markdown where the
 #        underscores in the word counts as emphasis. The default behaviour is to have
 #        `words_like_this` not contain any emphasis.
+# - `-vNumberHeadings=1` to enable or disable section numbers in front of headings; Default = 1
+# - `-vNumberH1s=1`: if `NumberHeadings` is enabled, `<H1>` headings are not numbered by
+#        default (because the `<H1>` would typically contain the document title). Use this to
+#        number `<H1>`s as well.
 #
 # I've tested it with Gawk, Nawk and Mawk.
 # Gawk and Nawk worked without issues, but don't use the `-W compat`
@@ -42,8 +47,6 @@
 #
 # ## Extensions
 #
-# - A link like `\[link text][heading-name]` gets replaced with `<a href="#heading-name">link text</a>`
-#   where heading-name corresponds to one of the headings.
 # - Insert a Table of Contents by using `\![toc]`.
 #   The Table of Contents is collapsed by default:
 #   - Use `\\![toc+]` to insert a ToC that is expanded by default;
@@ -51,12 +54,20 @@
 # - Github-style ```` ``` ```` code blocks supported.
 # - Github-style `~~strikethrough~~` supported.
 # - GitHub-style task lists `- [x]` are supported for documenting bugs and todo lists in code.
+# - The `id` attribute of anchor tags `<a>` are treated as in GitHub:
+#   The tag's id should be the title, in lower case stripped of non-alphanumeric characters
+#   (except hyphens and spaces) and then with all spaces replaced with hyphens.
+#   then add -1, -2, -3 until it's unique
+#   See [here](https://gist.github.com/asabaylus/3071099) (especially the comment by TomOnTime)
+#   and [here](https://gist.github.com/rachelhyman/b1f109155c9dafffe618)
 # - A couple of ideas from MultiMarkdown:
 #    - `\\[^footnotes]` are supported.
 #    - `*[abbr]:` Abbreviations are supported.
 #    - Space followed by \\ at the end of a line also forces a line break.
 # - Default behaviour is to have words_like_this not contain emphasis.
+#
 # Limitations:
+#
 # - You can't nest `<blockquote>`s, and they can't contain nested lists
 #     or `pre` blocks. You can work around this by using HTML directly.
 # - It takes some liberties with how inline (particularly block-level) HTML is processed and not
@@ -84,13 +95,16 @@
 BEGIN {
 
     # Configuration options
-    if(Title=="") Title = "Documentation";
-    if(Theme=="") Theme = 1;
-    if(Pretty=="") Pretty = 0;
-    if(HideToCLevel=="") HideToCLevel = 3;
+    if(Title== "") Title = "Documentation";
+    if(Theme== "") Theme = 1;
+    if(Pretty== "") Pretty = 0;
+    if(HideToCLevel== "") HideToCLevel = 3;
+    if(Lang == "") Lang = "en";
     #TopLinks = 1;
     #classic_underscore = 1;
     if(MaxWidth=="") MaxWidth="1080px";
+    if(NumberHeadings=="") NumberHeadings = 1;
+    if(NumberH1s=="") NumberH1s = 0;
 
     Mode = (Clean)?"p":"none";
     ToC = ""; ToCLevel = 1;
@@ -106,7 +120,7 @@ BEGIN {
     if(match($0,/\*\//)) {
         sub(/\*\/.*/,"");
         Out = Out filter($0);
-        Out = Out tag(Mode, Buf);
+        Out = Out tag(Mode, scrub(Buf));
         Buf = "";
         Prev = "";
     } else {
@@ -188,27 +202,27 @@ END {
             Out = Out tag(Mode, Buf);
     }
 
-    print "<!DOCTYPE html>\n<html><head>"
+    print "<!DOCTYPE html>\n<html lang=\"" Lang "\"><head>"
+    print "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">";
     print "<title>" Title "</title>";
     if(StyleSheet)
         print "<link rel=\"stylesheet\" href=\"" StyleSheet "\">";
     else
         print "<style><!--" CSS "\n--></style>";
-    print "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">";
     if(ToC && match(Out, /!\[toc[-+]?\]/))
-        print "<script type=\"text/javascript\"><!--\n" \
+        print "<script><!--\n" \
             "function toggle_toc(n) {\n" \
             "    var toc=document.getElementById('table-of-contents-' + n);\n" \
             "    var btn=document.getElementById('btn-text-' + n);\n" \
             "    toc.style.display=(toc.style.display=='none')?'block':'none';\n" \
-            "    btn.innerHTML=(toc.style.display=='none')?'&#x25BC;':'&#x25B2;';\n" \
+            "    btn.innerHTML=(toc.style.display=='none')?'&#x25BA;':'&#x25BC;';\n" \
             "}\n" \
             "function toggle_toc_ul(n) {   \n" \
             "    var toc=document.getElementById('toc-ul-' + n);   \n" \
             "    var btn=document.getElementById('toc-btn-' + n);   \n" \
             "    if(toc) {\n" \
             "        toc.style.display=(toc.style.display=='none')?'block':'none';   \n" \
-            "        btn.innerHTML=(toc.style.display=='none')?'&#x25BC;':'&#x25B2;';\n" \
+            "        btn.innerHTML=(toc.style.display=='none')?'&#x25BA;':'&#x25BC;';\n" \
             "    }\n" \
             "}\n" \
             "//-->\n</script>";
@@ -245,7 +259,7 @@ function trim(st) {
     sub(/[[:space:]]+$/, "", st);
     return st;
 }
-function filter(st,       res,tmp, linkdesc, url, delim, edelim, name, def) {
+function filter(st,       res,tmp, linkdesc, url, delim, edelim, name, def, plang) {
     if(Mode == "p") {
         if(match(st, /^[[:space:]]*\[[-._[:alnum:][:space:]]+\]:/)) {
             linkdesc = ""; LastLink = 0;
@@ -354,15 +368,15 @@ function filter(st,       res,tmp, linkdesc, url, delim, edelim, name, def) {
         else {
             gsub(/\t/,"    ",Buf);
             if(length(trim(Buf)) > 0) {
-                Lang = "";
+                plang = "";
                 if(match(Preterm, /^[[:space:]]*```+/)) {
-                    Lang = trim(substr(Preterm, RSTART+RLENGTH));
-                    if(Lang) {
-                        Lang = "class=\"prettyprint lang-" Lang "\"";
+                    plang = trim(substr(Preterm, RSTART+RLENGTH));
+                    if(plang) {
+                        plang = "class=\"prettyprint lang-" plang "\"";
                         HasCode=1;
                     }
                 }
-                res = tag("pre", tag("code", escape(Buf), Lang));
+                res = tag("pre", tag("code", escape(Buf), plang));
             }
             pop();
             if(Preterm) sub(/^[[:space:]]*```+[[:alnum:]]*/,"",st);
@@ -514,14 +528,14 @@ function scrub(st,    mp, ms, me, r, p, tg, a) {
             } else
                 a = "";
 
-            if(match(tolower(tg), "^/?(a|abbr|div|span|blockquote|pre|img|code|p|em|strong|sup|sub|del|ins|s|u|b|i|br|hr|ul|ol|li|table|thead|tfoot|tbody|tr|th|td|caption|column|col|colgroup|figure|figcaption|dl|dd|dt|mark|cite|q|var|samp|small)$")) {
+            if(match(tolower(tg), "^/?(a|abbr|div|span|blockquote|pre|img|code|p|em|strong|sup|sub|del|ins|s|u|b|i|br|hr|ul|ol|li|table|thead|tfoot|tbody|tr|th|td|caption|column|col|colgroup|figure|figcaption|dl|dd|dt|mark|cite|q|var|samp|small|details|summary)$")) {
                 r = r "<" tg a ">";
             } else if(match(tg, "^[[:alpha:]]+://[[:graph:]]+$")) {
                 if(!a) a = tg;
-                r = r "<a href=\"" tg "\">" a "</a>";
+                r = r "<a class=\"normal\" href=\"" tg "\">" a "</a>";
             } else if(match(tg, "^[[:graph:]]+@[[:graph:]]+$")) {
                 if(!a) a = tg;
-                r = r "<a href=\"" obfuscate("mailto:" tg) "\">" obfuscate(a) "</a>";
+                r = r "<a class=\"normal\" href=\"" obfuscate("mailto:" tg) "\">" obfuscate(a) "</a>";
             } else {
                 r = r "&lt;";
                 continue;
@@ -542,29 +556,36 @@ function scrub(st,    mp, ms, me, r, p, tg, a) {
 
 function push(newmode) {Stack[StackTop++] = Mode; Mode = newmode;}
 function pop() {Mode = Stack[--StackTop];Buf = ""; return Mode;}
-function heading(level, st,       res, href) {
-    st = trim(st);
+function heading(level, st,       res, href, u, text,svg) {
     if(level > 6) level = 6;
+    st = trim(st);
     href = tolower(st);
     href = strip_tags(href);
-    gsub(/[^ [:alnum:]]+/, "", href);
-    gsub(/ +/, "-", href);
-    if(!LinkUrls[href]) LinkUrls[href] = "#" href;
-    if(!LinkUrls[tolower(st)]) LinkUrls[tolower(st)] = "#" href;
-    res = tag("h" level, st (TopLinks?"&nbsp;&nbsp;<a class=\"top\" title=\"Return to top\" href=\"#\">&#8593;&nbsp;Top</a>":""), "id=\"" href "\"");
+    gsub(/[^-_ [:alnum:]]+/, "", href);
+    gsub(/[[:space:]]/, "-", href);
+    if(TitleUrls[href]) {
+        for(u = 1; TitleUrls[href "-" u]; u++);
+        href = href "-" u;
+    }
+    TitleUrls[href] = "#" href;
+
+    svg = "<svg width=\"16\" height=\"16\" xmlns=\"http://www.w3.org/2000/svg\"><g transform=\"rotate(-30, 8, 8)\" stroke=\"#000000\" opacity=\"0.25\"><rect fill=\"none\" height=\"6\" width=\"8\" x=\"2\" y=\"6\" rx=\"1.5\"/><rect fill=\"none\" height=\"6\" width=\"8\" x=\"6\" y=\"4\" rx=\"1.5\"/></g></svg>";
+    text = "<a href=\"#" href "\" class=\"header\">" st "&nbsp;" svg "</a>" (TopLinks?"&nbsp;&nbsp;<a class=\"top\" title=\"Return to top\" href=\"#\">&#8593;&nbsp;Top</a>":"");
+
+    res = tag("h" level, text, "id=\"" href "\"");
     for(;ToCLevel < level; ToCLevel++) {
         ToC_ID++;
         if(ToCLevel < HideToCLevel) {
-            ToC = ToC "<a class=\"toc-button\" id=\"toc-btn-" ToC_ID "\" onclick=\"toggle_toc_ul('" ToC_ID "')\">&#x25B2;</a>";
-            ToC = ToC "<ul class=\"toc-" ToCLevel "\" id=\"toc-ul-" ToC_ID "\">";
-        } else {
             ToC = ToC "<a class=\"toc-button\" id=\"toc-btn-" ToC_ID "\" onclick=\"toggle_toc_ul('" ToC_ID "')\">&#x25BC;</a>";
-            ToC = ToC "<ul style=\"display:none;\" class=\"toc-" ToCLevel "\" id=\"toc-ul-" ToC_ID "\">";
+            ToC = ToC "<ul class=\"toc toc-" ToCLevel "\" id=\"toc-ul-" ToC_ID "\">";
+        } else {
+            ToC = ToC "<a class=\"toc toc-button\" id=\"toc-btn-" ToC_ID "\" onclick=\"toggle_toc_ul('" ToC_ID "')\">&#x25BA;</a>";
+            ToC = ToC "<ul style=\"display:none;\" class=\"toc toc-" ToCLevel "\" id=\"toc-ul-" ToC_ID "\">";
         }
     }
     for(;ToCLevel > level; ToCLevel--)
         ToC = ToC "</ul>";
-    ToC = ToC "<li class=\"toc-" level "\"><a class=\"toc-" level "\" href=\"#" href "\">" st "</a>\n";
+    ToC = ToC "<li class=\"toc-" level "\"><a class=\"toc toc-" level "\" href=\"#" href "\">" st "</a>\n";
     ToCLevel = level;
     return res;
 }
@@ -583,8 +604,8 @@ function make_toc(st,              r,p,dis,t,n) {
 
         ++n;
         dis = index(substr(st,RSTART,RLENGTH),"+");
-        t = "<div>\n<a id=\"toc-button-" n "\" class=\"toc-button\" onclick=\"toggle_toc(" n ")\"><span id=\"btn-text-" n "\">" (dis?"&#x25B2;":"&#x25BC;") "</span>&nbsp;Contents</a>\n" \
-            "<div id=\"table-of-contents-" n "\" style=\"display:" (dis?"block":"none") ";\">\n<ul class=\"toc-1\">" ToC "</ul>\n</div>\n</div>";
+        t = "<div>\n<a id=\"toc-button-" n "\" class=\"toc-button\" onclick=\"toggle_toc(" n ")\"><span id=\"btn-text-" n "\">" (dis?"&#x25BC;":"&#x25BA;") "</span>&nbsp;Contents</a>\n" \
+            "<div id=\"table-of-contents-" n "\" style=\"display:" (dis?"block":"none") ";\">\n<ul class=\"toc toc-1\">" ToC "</ul>\n</div>\n</div>";
         r = r substr(st,1,RSTART-1);
         r = r t;
         st = substr(st,RSTART+RLENGTH);
@@ -594,13 +615,13 @@ function make_toc(st,              r,p,dis,t,n) {
 }
 function fix_links(st,          lt,ld,lr,url,img,res,rx,pos,pre) {
     do {
-        pre = match(st, /<pre>/); # Don't substitute in <pre> blocks
+        pre = match(st, /<(pre|code)>/); # Don't substitute in <pre> or <code> blocks
         pos = match(st, /\[[^\]]+\]/);
         if(!pos)break;
         if(pre && pre < pos) {
-            pre = match(st, /<\/pre>/);
+            match(st, /<\/(pre|code)>/);
             res = res substr(st,1,RSTART+RLENGTH);
-            st = substr(st, RSTART+RLENGTH);
+            st = substr(st, RSTART+RLENGTH+1);
             continue;
         }
         img=substr(st,RSTART-1,1)=="!";
@@ -631,7 +652,7 @@ function fix_links(st,          lt,ld,lr,url,img,res,rx,pos,pre) {
             if(img)
                 res = res "<img src=\"" url "\" title=\"" ld "\" alt=\"" lt "\">";
             else
-                res = res "<a href=\"" url "\" title=\"" ld "\">" lt "</a>";
+                res = res "<a class=\"normal\" href=\"" url "\" title=\"" ld "\">" lt "</a>";
         } else if(match(st, /^[[:space:]]*\[[^\]]*\]/)) {
             lt = substr(rx, 2, length(rx) - 2);
             match(st, /\[[^\]]*\]/);
@@ -645,8 +666,10 @@ function fix_links(st,          lt,ld,lr,url,img,res,rx,pos,pre) {
             ld = LinkDescs[lr];
             if(img)
                 res = res "<img src=\"" url "\" title=\"" ld "\" alt=\"" lt "\">";
+            else if(url)
+                res = res "<a class=\"normal\" href=\"" url "\" title=\"" ld "\">" lt "</a>";
             else
-                res = res "<a href=\"" url "\" title=\"" ld "\">" lt "</a>";
+                res = res "[" lt "][" lr "]";
         } else
             res = res (img?"!":"") rx;
     } while(pos > 0);
@@ -731,21 +754,28 @@ function init_css(Theme,             css,ss,hr,c1,c2,c3,c4,c5,bg1,bg2,bg3,bg4,ff
 
     css["body"] = "color:%color1%;font-family:%font-family%;font-size:%font-size%;line-height:1.5em;" \
                 "padding:1em 2em;width:80%;max-width:%maxwidth%;margin:0 auto;min-height:100%;float:none;";
-    css["h1"] = "color:%color1%;border-bottom:1px solid %color1%;padding:0.3em 0.1em;";
+    css["h1"] = "border-bottom:1px solid %color1%;padding:0.3em 0.1em;";
+    css["h1 a"] = "color:%color1%;";
     css["h2"] = "color:%color2%;border-bottom:1px solid %color2%;padding:0.2em 0.1em;";
+    css["h2 a"] = "color:%color2%;";
     css["h3"] = "color:%color3%;border-bottom:1px solid %color3%;padding:0.1em 0.1em;";
-    css["h4,h5,h6"] = "color:%color4%;padding:0.1em 0.1em;";
-    css["h1,h2,h3,h4,h5,h6"] = "font-weight:normal;line-height:1.2em;";
+    css["h3 a"] = "color:%color3%;";
+    css["h4,h5,h6"] = "padding:0.1em 0.1em;";
+    css["h4 a,h5 a,h6 a"] = "color:%color4%;";
+    css["h1,h2,h3,h4,h5,h6"] = "font-weight:bolder;line-height:1.2em;";
     css["h4"] = "border-bottom:1px solid %color4%";
     css["p"] = "margin:0.5em 0.1em;"
     css["hr"] = "background:%color1%;height:1px;border:0;"
-    css["a"] = "color:%color2%;";
-    css["a:visited"] = "color:%color2%;";
-    css["a:active"] = "color:%color4%;";
-    css["a:hover"] = "color:%color4%;";
+    css["a.normal, a.toc"] = "color:%color2%;";
+    #css["a.normal:visited"] = "color:%color2%;";
+    #css["a.normal:active"] = "color:%color4%;";
+    css["a.normal:hover, a.toc:hover"] = "color:%color4%;";
     css["a.top"] = "font-size:x-small;text-decoration:initial;float:right;";
+    css["a.header svg"] = "opacity:0;";
+    css["a.header:hover svg"] = "opacity:1;";
+    css["a.header"] = "text-decoration: none;";
     css["strong,b"] = "color:%color1%";
-    css["code"] = "color:%color2%;";
+    css["code"] = "color:%color2%;font-weight:bold;";
     css["blockquote"] = "margin-left:1em;color:%color2%;border-left:0.2em solid %color3%;padding:0.25em 0.5em;overflow-x:auto;";
     css["pre"] = "color:%color2%;background:%color5%;border:1px solid;border-radius:2px;line-height:1.25em;margin:0.25em 0.5em;padding:0.75em;overflow-x:auto;";
     css["table"] = "border-collapse:collapse;margin:0.5em;";
@@ -757,7 +787,7 @@ function init_css(Theme,             css,ss,hr,c1,c2,c3,c4,c5,bg1,bg2,bg3,bg4,ff
     css["dl"] = "margin:0.5em;";
     css["dt"] = "font-weight:bold;";
     css["dd"] = "padding:0.3em;";
-    css["mark"] = "color:%color2%;background-color:%color5%;";
+    css["mark"] = "color:%color5%;background-color:%color4%;";
     css["del,s"] = "color:%color4%;";
     css["a.toc-button"] = "color:%color2%;cursor:pointer;font-size:small;padding: 0.3em 0.5em 0.5em 0.5em;font-family:monospace;border-radius:3px;";
     css["a.toc-button:hover"] = "color:%color4%;background:%color5%;";
@@ -768,9 +798,48 @@ function init_css(Theme,             css,ss,hr,c1,c2,c3,c4,c5,bg1,bg2,bg3,bg4,ff
     css["a.footnote-back"] = "text-decoration:initial;font-size:x-small;";
     css[".fade"] = "color:%color5%;";
     css[".highlight"] = "color:%color2%;background-color:%color5%;";
+	css["summary"] = "cursor:pointer;";
+	css["ul.toc"] = "list-style-type:none;";
+
+    if(NumberHeadings)  {
+        if(NumberH1s) {
+            css["body"] = css["body"] "counter-reset: h1 toc1;";
+            css["h1"] = css["h1"] "counter-reset: h2 h3 h4;";
+            css["h2"] = css["h2"] "counter-reset: h3 h4;";
+            css["h3"] = css["h3"] "counter-reset: h4;";
+            css["h1::before"] = "content: counter(h1) \" \"; counter-increment: h1; margin-right: 10px;";
+            css["h2::before"] = "content: counter(h1) \".\"counter(h2) \" \";counter-increment: h2; margin-right: 10px;";
+            css["h3::before"] = "content: counter(h1) \".\"counter(h2) \".\"counter(h3) \" \";counter-increment: h3; margin-right: 10px;";
+            css["h4::before"] = "content: counter(h1) \".\"counter(h2) \".\"counter(h3)\".\"counter(h4) \" \";counter-increment: h4; margin-right: 10px;";
+
+            css["li.toc-1"] = "counter-reset: toc2 toc3 toc4;";
+            css["li.toc-2"] = "counter-reset: toc3 toc4;";
+            css["li.toc-3"] = "counter-reset: toc4;";
+            css["a.toc-1::before"] = "content: counter(h1) \"  \";counter-increment: toc1;";
+            css["a.toc-2::before"] = "content: counter(h1) \".\" counter(toc2) \"  \";counter-increment: toc2;";
+            css["a.toc-3::before"] = "content: counter(h1) \".\" counter(toc2) \".\" counter(toc3) \"  \";counter-increment: toc3;";
+            css["a.toc-4::before"] = "content: counter(h1) \".\" counter(toc2) \".\" counter(toc3) \".\" counter(toc4) \"  \";counter-increment: toc4;";
+
+        } else {
+            css["h1"] = css["h1"] "counter-reset: h2 h3 h4;";
+            css["h2"] = css["h2"] "counter-reset: h3 h4;";
+            css["h3"] = css["h3"] "counter-reset: h4;";
+            css["h2::before"] = "content: counter(h2) \" \";counter-increment: h2; margin-right: 10px;";
+            css["h3::before"] = "content: counter(h2) \".\"counter(h3) \" \";counter-increment: h3; margin-right: 10px;";
+            css["h4::before"] = "content: counter(h2) \".\"counter(h3)\".\"counter(h4) \" \";counter-increment: h4; margin-right: 10px;";
+
+            css["li.toc-1"] = "counter-reset: toc2 toc3 toc4;";
+            css["li.toc-2"] = "counter-reset: toc3 toc4;";
+            css["li.toc-3"] = "counter-reset: toc4;";
+            css["a.toc-2::before"] = "content: counter(toc2) \"  \";counter-increment: toc2;";
+            css["a.toc-3::before"] = "content: counter(toc2) \".\" counter(toc3) \"  \";counter-increment: toc3;";
+            css["a.toc-4::before"] = "content: counter(toc2) \".\" counter(toc3) \".\" counter(toc4) \"  \";counter-increment: toc4;";
+        }
+    }
 
     # Colors:
-    c1="#314070";c2="#465DA6";c3="#6676A8";c4="#A88C3F";c5="#E8E4D9";
+    #c1="#314070";c2="#465DA6";c3="#6676A8";c4="#A88C3F";c5="#E8E4D9";
+    c1="#314070";c2="#384877";c3="#6676A8";c4="#738FD0";c5="#FBFCFF";
     # Font Family:
     ff = "sans-serif";
     fs = "11pt";
