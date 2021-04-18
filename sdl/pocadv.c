@@ -25,6 +25,14 @@
 #define WINDOW_WIDTH    (VSCREEN_WIDTH * SCREEN_SCALE)
 #define WINDOW_HEIGHT   (VSCREEN_HEIGHT * SCREEN_SCALE)
 
+#ifndef USE_LOG_STREAM
+#  define USE_LOG_STREAM 0
+#else
+#  ifndef LOG_STREAM
+#    define LOG_STREAM   stderr
+#  endif
+#endif
+
 #ifndef LOG_FILE_NAME
 #  define LOG_FILE_NAME "sdl-game.log"
 #endif
@@ -159,12 +167,13 @@ void set_cursor(Bitmap *b, int hsx, int hsy) {
     cursor_hsx = hsx;
     cursor_hsy = hsy;
     cursor = b;
+    int w = bm_width(b), h= bm_height(b);
     if(b) {
         if(!cursor_back)
-            cursor_back = bm_create(b->w, b->h);
-        else if(cursor_back->w != b->w || cursor_back->h != b->h) {
+            cursor_back = bm_create(w, h);
+        else if(bm_width(cursor_back) != w || bm_height(cursor_back) != h) {
             bm_free(cursor_back);
-            cursor_back = bm_create(b->w, b->h);
+            cursor_back = bm_create(w, h);
         }
         SDL_ShowCursor(SDL_DISABLE);
     } else {
@@ -408,14 +417,16 @@ static void do_iteration() {
         cx = mouse_x - cursor_hsx;
         cy = mouse_y - cursor_hsy;
 
-        bm_blit(cursor_back, 0, 0, screen, cx, cy, cursor->w, cursor->h);
-        bm_maskedblit(screen, cx, cy, cursor, 0, 0, cursor->w, cursor->h);
+        int cw = bm_width(cursor), ch = bm_height(cursor);
+
+        bm_blit(cursor_back, 0, 0, screen, cx, cy, cw, ch);
+        bm_maskedblit(screen, cx, cy, cursor, 0, 0, cw, ch);
     }
 
 #  if EPX_SCALE
-    bm_blit_ex(vscreen, 0, 0, vscreen->w, vscreen->h, epx, 0, 0, epx->w, epx->h, 0);
+    bm_blit_ex(vscreen, 0, 0, bm_width(vscreen), bm_height(vscreen), epx, 0, 0, bm_width(epx), bm_height(epx), 0);
 #  else
-    bm_blit_ex(vscreen, 0, 0, vscreen->w, vscreen->h, screen, 0, 0, screen->w, screen->h, 0);
+    bm_blit_ex(vscreen, 0, 0, bm_width(vscreen), bm_height(vscreen), screen, 0, 0, bm_width(screen), bm_height(screen), 0);
 #  endif
 
     if(SDL_MUSTLOCK(window))
@@ -429,15 +440,15 @@ static void do_iteration() {
     if(cursor) {
         cx = mouse_x - cursor_hsx;
         cy = mouse_y - cursor_hsy;
-
-        bm_blit(cursor_back, 0, 0, screen, cx, cy, cursor->w, cursor->h);
-        bm_maskedblit(screen, cx, cy, cursor, 0, 0, cursor->w, cursor->h);
+        int cw = bm_width(cursor), ch = bm_height(cursor);
+        bm_blit(cursor_back, 0, 0, screen, cx, cy, cw, ch);
+        bm_maskedblit(screen, cx, cy, cursor, 0, 0, cw, ch);
     }
 
 #  if EPX_SCALE
-    SDL_UpdateTexture(texture, NULL, epx->data, epx->w*4);
+    SDL_UpdateTexture(texture, NULL, bm_data(epx), bm_width(epx)*4);
 #  else
-    SDL_UpdateTexture(texture, NULL, screen->data, screen->w*4);
+    SDL_UpdateTexture(texture, NULL, bm_raw_data(screen), bm_width(screen)*4);
 #  endif
     SDL_RenderClear(renderer);
     SDL_RenderCopy(renderer, texture, NULL, NULL);
@@ -445,7 +456,7 @@ static void do_iteration() {
 #endif
 
     if(cursor) {
-        bm_maskedblit(screen, cx, cy, cursor_back, 0, 0, cursor_back->w, cursor_back->h);
+        bm_maskedblit(screen, cx, cy, cursor_back, 0, 0, bm_width(cursor_back), bm_height(cursor_back));
     }
 }
 
@@ -460,8 +471,8 @@ int main(int argc, char *argv[]) {
     errno_t err = fopen_s(&logfile, LOG_FILE_NAME, "w");
     if (err != 0)
         return 1;
-#  elif defined NO_OPEN_LOG
-	logfile = LOG_FILE_NAME;
+#  elif USE_LOG_STREAM
+	logfile = LOG_STREAM;
 #  else
     logfile = fopen(LOG_FILE_NAME, "w");
     if (!logfile)
@@ -569,8 +580,9 @@ int main(int argc, char *argv[]) {
     SDL_Quit();
 
     rlog("%s","Application Done!\n");
-    if(logfile != stdout && logfile != stderr)
-        fclose(logfile);
+#if !USE_LOG_STREAM
+    fclose(logfile);
+#endif
     return 0;
 }
 

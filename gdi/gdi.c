@@ -45,6 +45,14 @@ I only use it for those hard to debug crashes */
 #  define LOG_FILE_NAME "gdi-game.log"
 #endif
 
+#ifndef USE_LOG_STREAM
+#  define USE_LOG_STREAM 0
+#else
+#  ifndef LOG_STREAM
+#    define LOG_STREAM   stderr
+#  endif
+#endif
+
 static char szAppName[] = WINDOW_CAPTION;
 static char szTitle[]   = WINDOW_CAPTION " - GDI";
 
@@ -152,11 +160,12 @@ void set_cursor(Bitmap *b, int hsx, int hsy) {
     cursor_hsy = hsy;
     cursor = b;
     if(b) {
+        int w = bm_width(b), h = bm_height(b);
         if(!cursor_back)
-            cursor_back = bm_create(b->w, b->h);
-        else if(cursor_back->w != b->w || cursor_back->h != b->h) {
+            cursor_back = bm_create(w, h);
+        else if(bm_width(cursor_back) != w || bm_height(cursor_back) != h) {
             bm_free(cursor_back);
-            cursor_back = bm_create(b->w, b->h);
+            cursor_back = bm_create(w, h);
         }
         ShowCursor(0);
     } else {
@@ -211,7 +220,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             hdc = GetDC( hwnd );
             hbmp = CreateDIBSection( hdc, &bmi, DIB_RGB_COLORS, (void**)&pixels, NULL, 0 );
             if (!hbmp) {
-                exit_error("CreateDIBSection\n");
+                exit_error("CreateDIBSection");
                 return 0;
             }
 
@@ -334,9 +343,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             if(cursor) {
                 cx = mouse_x - cursor_hsx;
                 cy = mouse_y - cursor_hsy;
+                int cw = bm_width(cursor);
+                int ch = bm_height(cursor);
 
-                bm_blit(cursor_back, 0, 0, screen, cx, cy, cursor->w, cursor->h);
-                bm_maskedblit(screen, cx, cy, cursor, 0, 0, cursor->w, cursor->h);
+                bm_blit(cursor_back, 0, 0, screen, cx, cy, cw, ch);
+                bm_maskedblit(screen, cx, cy, cursor, 0, 0, cw, ch);
             }
 
 #if EPX_SCALE
@@ -351,7 +362,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             EndPaint( hwnd, &ps );
 
             if(cursor) {
-                bm_maskedblit(screen, cx, cy, cursor_back, 0, 0, cursor_back->w, cursor_back->h);
+                bm_maskedblit(screen, cx, cy, cursor_back, 0, 0, bm_width(cursor_back), bm_height(cursor_back));
             }
 
             break;
@@ -384,8 +395,8 @@ int APIENTRY WinMain(
     if (err != 0) {
         exit_error("Unable to open log file `%s`");
     }
-#elif defined NO_OPEN_LOG
-    logfile = LOG_FILE_NAME;
+#elif defined USE_LOG_STREAM
+	logfile = LOG_STREAM;
 #else
     logfile = fopen(LOG_FILE_NAME, "w");
     if(!logfile) {
@@ -478,7 +489,10 @@ int APIENTRY WinMain(
     }
     rlog("%s","GDI Framework: Main loop stopped");
     rlog("%s","Application Done!\n");
+
+#if !USE_LOG_STREAM
     fclose(logfile);
+#endif
 
     return msg.wParam;
 }

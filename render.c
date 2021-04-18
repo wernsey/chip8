@@ -37,6 +37,10 @@ static int bg_color = 0x000055;
 /* Is the interpreter running? Set to 0 to enter "debug" mode */
 static int running = 1;
 
+
+static Bitmap *chip8_screen;
+static Bitmap *hud;
+
 /* These are the same keybindings Octo [10]'s  */
 static unsigned int Key_Mapping[16] = {
 #if defined(SDL) || defined(SDL2)
@@ -149,6 +153,8 @@ void init_game(int argc, char *argv[]) {
     bm_set_color(screen, 0x202020);
     bm_clear(screen);
 
+    chip8_screen = bm_create(128, 64);
+
     draw_screen();
 
 #ifdef __EMSCRIPTEN__
@@ -171,10 +177,16 @@ void init_game(int argc, char *argv[]) {
     Key_Mapping[15] = KCODEA(v,V);
 #endif
 
+    hud = bm_create(128, 24);
+    if(!hud)
+        exit_error("unable to create HUD");
+
     rlog("Initialized.");
 }
 
 void deinit_game() {
+    bm_free(hud);
+    bm_free(chip8_screen);
     rlog("Done.");
 }
 
@@ -225,16 +237,14 @@ static unsigned int noise(int x, int y, unsigned int col_in) {
 }
 #endif
 
-static unsigned char chip8_screen_buffer[SCREEN_WIDTH * SCREEN_HEIGHT * 4];
-
 static void chip8_to_bmp(Bitmap *sbmp) {
     int x, y, w, h;
 
     c8_resolution(&w, &h);
 
-    assert(w <= SCREEN_WIDTH);
-    assert(h <= SCREEN_HEIGHT);
-    bm_bind_static(sbmp, chip8_screen_buffer, w, h);
+    assert(w <= bm_width(sbmp));
+    assert(h <= bm_height(sbmp));
+    //bm_bind_static(sbmp, chip8_screen_buffer, w, h);
 
     for(y = 0; y < h; y++) {
         for(x = 0; x < w; x++) {
@@ -247,13 +257,11 @@ static void chip8_to_bmp(Bitmap *sbmp) {
 static void draw_screen() {
     int w, h;
 
-    Bitmap chip8_screen;
-
-    chip8_to_bmp(&chip8_screen);
-    w = chip8_screen.w;
-    h = chip8_screen.h;
+    chip8_to_bmp(chip8_screen);
+    c8_resolution(&w, &h);
 
 #if CRT_BLUR
+    /* FIXME: This won't work anymore on the new BMP API */
     Bitmap plotscreen;
     bm_bind_static(&plotscreen, plotscreen_buffer, SCREEN_WIDTH, SCREEN_HEIGHT);
 
@@ -271,7 +279,7 @@ static void draw_screen() {
                               0.0, 0.1, 0.0};
     bm_apply_kernel(screen, 3, smooth_kernel);
 #else
-    bm_blit_ex(screen, 0, 0, screen->w, screen->h, &chip8_screen, 0, 0, w, h, 0);
+    bm_blit_ex(screen, 0, 0, bm_width(screen), bm_height(screen), chip8_screen, 0, 0, w, h, 0);
 #endif
 
 #if CRT_NOISE
@@ -293,23 +301,25 @@ static void draw_screen() {
 
 void bm_blit_blend(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, int w, int h);
 
+
 void draw_hud() {
     int i;
-    Bitmap hud;
-    static unsigned char hud_buffer[128 * 24 * 4];
-    bm_bind_static(&hud, hud_buffer, 128, 24);
+
+    // Bitmap hud;
+    // static unsigned char hud_buffer[128 * 24 * 4];
+    // bm_bind_static(&hud, hud_buffer, 128, 24);
 
     uint16_t pc = c8_get_pc();
     uint16_t opcode = c8_opcode(pc);
-    bm_set_color(&hud, 0x202020);
-    bm_clear(&hud);
-    bm_set_color(&hud, 0xFFFFFF);
-    bm_printf(&hud, 1, 0, "%03X %04X", pc, opcode);
+    bm_set_color(hud, 0x202020);
+    bm_clear(hud);
+    bm_set_color(hud, 0xFFFFFF);
+    bm_printf(hud, 1, 0, "%03X %04X", pc, opcode);
     for(i = 0; i < 16; i++) {
-        bm_printf(&hud, (i & 0x07) * 16, (i >> 3) * 8 + 8, "%02X", c8_get_reg(i));
+        bm_printf(hud, (i & 0x07) * 16, (i >> 3) * 8 + 8, "%02X", c8_get_reg(i));
     }
 
-    bm_blit_blend(screen, 0, screen->h - 24, &hud, 0, 0, hud.w, hud.h);
+    bm_blit_blend(screen, 0, bm_height(screen) - 24, hud, 0, 0, bm_width(hud), bm_height(hud));
 }
 
 int render(double elapsedSeconds) {
@@ -391,6 +401,8 @@ int render(double elapsedSeconds) {
 void bm_blit_blend(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, int w, int h) {
     int x,y, i, j;
 
+    BmRect destClip = bm_get_clip(dst);
+
     if(sx < 0) {
         int delta = -sx;
         sx = 0;
@@ -398,20 +410,20 @@ void bm_blit_blend(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, int
         w -= delta;
     }
 
-    if(dx < dst->clip.x0) {
-        int delta = dst->clip.x0 - dx;
+    if(dx < destClip.x0) {
+        int delta = destClip.x0 - dx;
         sx += delta;
         w -= delta;
-        dx = dst->clip.x0;
+        dx = destClip.x0;
     }
 
-    if(sx + w > src->w) {
-        int delta = sx + w - src->w;
+    if(sx + w > bm_width(src)) {
+        int delta = sx + w - bm_width(src);
         w -= delta;
     }
 
-    if(dx + w > dst->clip.x1) {
-        int delta = dx + w - dst->clip.x1;
+    if(dx + w > destClip.x1) {
+        int delta = dx + w - destClip.x1;
         w -= delta;
     }
 
@@ -422,48 +434,48 @@ void bm_blit_blend(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, int
         h -= delta;
     }
 
-    if(dy < dst->clip.y0) {
-        int delta = dst->clip.y0 - dy;
+    if(dy < destClip.y0) {
+        int delta = destClip.y0 - dy;
         sy += delta;
         h -= delta;
-        dy = dst->clip.y0;
+        dy = destClip.y0;
     }
 
-    if(sy + h > src->h) {
-        int delta = sy + h - src->h;
+    if(sy + h > bm_height(src)) {
+        int delta = sy + h - bm_height(src);
         h -= delta;
     }
 
-    if(dy + h > dst->clip.y1) {
-        int delta = dy + h - dst->clip.y1;
+    if(dy + h > destClip.y1) {
+        int delta = dy + h - destClip.y1;
         h -= delta;
     }
 
     if(w <= 0 || h <= 0)
         return;
-    if(dx >= dst->clip.x1 || dx + w < dst->clip.x0)
+    if(dx >= destClip.x1 || dx + w < destClip.x0)
         return;
-    if(dy >= dst->clip.y1 || dy + h < dst->clip.y0)
+    if(dy >= destClip.y1 || dy + h < destClip.y0)
         return;
-    if(sx >= src->w || sx + w < 0)
+    if(sx >= bm_width(src) || sx + w < 0)
         return;
-    if(sy >= src->h || sy + h < 0)
+    if(sy >= bm_height(src) || sy + h < 0)
         return;
 
-    if(sx + w > src->w) {
-        int delta = sx + w - src->w;
+    if(sx + w > bm_width(src)) {
+        int delta = sx + w - bm_width(src);
         w -= delta;
     }
 
-    if(sy + h > src->h) {
-        int delta = sy + h - src->h;
+    if(sy + h > bm_height(src)) {
+        int delta = sy + h - bm_height(src);
         h -= delta;
     }
 
-    assert(dx >= 0 && dx + w <= dst->clip.x1);
-    assert(dy >= 0 && dy + h <= dst->clip.y1);
-    assert(sx >= 0 && sx + w <= src->w);
-    assert(sy >= 0 && sy + h <= src->h);
+    assert(dx >= 0 && dx + w <= destClip.x1);
+    assert(dy >= 0 && dy + h <= destClip.y1);
+    assert(sx >= 0 && sx + w <= bm_width(src));
+    assert(sy >= 0 && sy + h <= bm_height(src));
 
     j = sy;
     for(y = dy; y < dy + h; y++) {

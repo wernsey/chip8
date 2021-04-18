@@ -1,7 +1,8 @@
 #define WINDOW_CAPTION "CHIP-8 Machine"
 
-#define NO_OPEN_LOG     1
-#define LOG_FILE_NAME   stderr
+#define USE_LOG_STREAM  1
+#define LOG_STREAM      stderr
+
 #define EPX_SCALE       0
 #define SCREEN_SCALE    4
 

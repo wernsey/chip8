@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdarg.h>
+#define _USE_MATH_DEFINES
 #include <math.h>
 #include <ctype.h>
 #include <float.h>
@@ -36,7 +37,9 @@ you may not want to import a bunch of third party libraries.
 #   include <setjmp.h>
 #endif
 
-#include "bmp.h"
+#ifndef BMP_H
+#  include "bmp.h"
+#endif
 
 /* Ignore the alpha byte when comparing colors?
 FIXME: Not all functions that should respect IGNORE_ALPHA does so.
@@ -53,7 +56,13 @@ FIXME: Not all functions that should respect IGNORE_ALPHA does so.
 #  define ABGR 0
 #endif
 
-#define TGA_SAVE_RLE    1 /* Use RLE when saving TGA files? */
+/* Use RLE when saving TGA files? */
+#define TGA_SAVE_RLE    1
+
+/* Save NetPBM in binary format (P4,P5,P6)? */
+#ifndef PPM_BINARY
+#  define PPM_BINARY 0
+#endif
 
 /* Save transparent backgrounds when saving GIF?
 It used to be on by default, but it turned out to be less useful
@@ -64,15 +73,28 @@ Still, it is here if you need it
 #  define SAVE_GIF_TRANSPARENT 0
 #endif
 
+#ifndef SIZE_LIMITS
+#  define SIZE_LIMITS 1
+#endif
+
 #if BM_LAST_ERROR
-const char *bm_last_error = "";
+static const char *bm_last_error = "no error";
 #  define SET_ERROR(e) bm_last_error = e
 #else
-#  define SET_ERROR(e)
+#  define SET_ERROR(e) (void)e
 #endif
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
+
+#define SWAPINT(a, b) do {int t = a; a = b; b = t;} while(0)
+
+/* https://eli.thegreenplace.net/2009/11/16/void-and-casts-in-c-and-c */
+#if defined(__cplusplus)
+#  define CAST(T) static_cast<T>
+#else
+#  define CAST(T)
+#endif
 
 #if !defined(WIN32) && 0
 /* TODO: Use `alloca()` if it is available */
@@ -91,6 +113,59 @@ See __STDC_LIB_EXT1__
 #  define SAFE_C11
 #  define strdup _strdup
 #endif
+
+/* Definitions for Bitmap::flags */
+
+/* FLAG_OWNS_DATA - set if the Bitmap owns the memory allocated to Bitmap::data.
+    If it is set, then bm_free() will free it.
+ */
+#define FLAG_OWNS_DATA  1
+
+/* TODO: I want to add flags to check if the bitmap had a palette and an alpha channel
+    and so on in the file it was loaded from, etc.
+ */
+
+/*
+ * Structure containing a bitmap image.
+ *
+ * The internal format is `0xAARRGGBB` little endian.
+ * Meaning that `p[0]` contains B, `p[1]` contains G,
+ * `p[2]` contains R and `p[3]` contains A
+ * and the data buffer is an array of bytes BGRABGRABGRABGRABGRA...
+ *
+ * The member `color` contains the color that will be used for drawing
+ * primitives, and for transparency while blitting.
+ *
+ * The member `font` is a pointer to a `BmFont` structure that is used
+ * to render text. See the [Font Routines][] section for more details.
+ * Don't modify this directly, since fonts are reference counted;
+ * use `bm_set_font()` instead.
+ *
+ * The member `clip` is a `BmRect` that defines the clipping rectangle
+ * when drawing primitives and text.
+ */
+struct bitmap {
+    /* Dimesions of the bitmap */
+    int w, h;
+
+    /* The actual pixel data in RGBA format */
+    unsigned char *data;
+
+    /* Color for the pen of the canvas */
+    unsigned int color;
+
+    /* Font object for rendering text */
+    struct bitmap_font *font;
+
+    /* Reference count of the bitmap object */
+    unsigned int ref_count;
+
+    /* Some flags for the bitmap */
+    unsigned int flags;
+
+    /* Clipping rectangle */
+    BmRect clip;
+};
 
 #pragma pack(push, 1) /* Don't use any padding (Windows compilers) */
 
@@ -168,15 +243,25 @@ struct rgb_triplet {
 /* N=0 -> B, N=1 -> G, N=2 -> R, N=3 -> A */
 #define BM_GETN(B,N,X,Y) (B->data[((Y) * BM_ROW_SIZE(B) + (X) * BM_BPP) + (N)])
 
-Bitmap *bm_create(int w, int h) {
-    Bitmap *b = malloc(sizeof *b);
+static Bitmap *bm_create_internal(int w, int h) {
+    SET_ERROR("no error");
+
+    if(w <= 0 || h <= 0) {
+        SET_ERROR("invalid dimensions");
+        return NULL;
+    }
+#if SIZE_LIMITS
+    if(w > 23000 || h > 23000 || w*h > 0x1FFFFFFF) {
+        SET_ERROR("dimensions too large");
+        return NULL;
+    }
+#endif
+
+    Bitmap *b = CAST(Bitmap *)(malloc(sizeof *b));
     if(!b) {
         SET_ERROR("out of memory");
         return NULL;
     }
-
-    assert(w > 0);
-    assert(h > 0);
 
     b->w = w;
     b->h = h;
@@ -186,30 +271,46 @@ Bitmap *bm_create(int w, int h) {
     b->clip.x1 = w;
     b->clip.y1 = h;
 
-    b->data = malloc(BM_BLOB_SIZE(b));
-    if(!b->data) {
-        SET_ERROR("out of memory");
-        free(b);
-        return NULL;
-    }
-    memset(b->data, 0x00, BM_BLOB_SIZE(b));
+    b->data = NULL;
+    b->flags = 0;
 
     b->font = NULL;
     bm_reset_font(b);
 
     bm_set_color(b, 0xFFFFFFFF);
 
+    b->ref_count = 0;
+
     return b;
 }
 
-#if USESTB
-#define STB_IMAGE_IMPLEMENTATION
-#ifdef __TINYC__
+Bitmap *bm_create(int w, int h) {
+    Bitmap *b = bm_create_internal(w, h);
+    if(!b)
+        return NULL;
+
+    b->data = CAST(unsigned char *)(malloc(BM_BLOB_SIZE(b)));
+    if(!b->data) {
+        SET_ERROR("out of memory");
+        bm_free(b);
+        return NULL;
+    }
+    memset(b->data, 0x00, BM_BLOB_SIZE(b));
+
+    b->flags = FLAG_OWNS_DATA;
+    return b;
+}
+
+#if defined(USESTB)
+#  define STB_IMAGE_IMPLEMENTATION
+#  ifdef __TINYC__
 /* Yes, it compiles with the Tiny C Compiler, but without SIMD */
-#  define STBI_NO_SIMD
-#endif
-#include "stb_image.h"
-#undef STB_IMAGE_IMPLEMENTATION
+#    define STBI_NO_SIMD
+#  endif
+#  ifndef STBI_INCLUDE_STB_IMAGE_H
+#    include "stb_image.h"
+#    undef STB_IMAGE_IMPLEMENTATION
+#  endif
 #endif
 
 /* Wraps around the stdio functions, so I don't have to duplicate my code
@@ -232,13 +333,13 @@ static BmReader make_file_reader(FILE *fp) {
     return rd;
 }
 
-struct BmMemReader {
+typedef struct {
     const unsigned char *buffer;
     unsigned int len;
     unsigned int pos;
-};
+} BmMemReader;
 
-static size_t memread(void *ptr, size_t size, size_t nobj, struct BmMemReader *mem) {
+static size_t memread(void *ptr, size_t size, size_t nobj, BmMemReader *mem) {
     size = size * nobj;
     if(mem->pos + size > mem->len) {
         return 0;
@@ -247,23 +348,23 @@ static size_t memread(void *ptr, size_t size, size_t nobj, struct BmMemReader *m
     mem->pos += size;
     return nobj;
 }
-static long memtell(struct BmMemReader *mem) {
+static long memtell(BmMemReader *mem) {
     return mem->pos;
 }
-static int memseek(struct BmMemReader *mem, long offset, int origin) {
+static int memseek(BmMemReader *mem, long offset, int origin) {
     switch(origin) {
     case SEEK_SET: mem->pos = offset; break;
     case SEEK_CUR: mem->pos += offset; break;
     case SEEK_END: mem->pos = mem->len - offset; break;
     }
-    if(mem->pos < 0 || mem->pos >= mem->len) {
+    if(mem->pos >= mem->len) {
         mem->pos = 0;
         return -1;
     }
     return 0;
 }
 
-static BmReader make_mem_reader(struct BmMemReader *mem) {
+static BmReader make_mem_reader(BmMemReader *mem) {
     BmReader rd;
     rd.data = mem;
     mem->pos = 0;
@@ -301,6 +402,8 @@ static BmReader make_rwops_reader(SDL_RWops *rw) {
 #endif
 
 Bitmap *bm_load(const char *filename) {
+    SET_ERROR("no error");
+
     Bitmap *bmp;
 #ifdef SAFE_C11
     FILE *f;
@@ -318,12 +421,24 @@ Bitmap *bm_load(const char *filename) {
     return bmp;
 }
 
+Bitmap *bm_loadf(const char *fmt, ...) {
+	char fname[256];
+    va_list arg;
+    va_start(arg, fmt);
+    vsnprintf(fname, sizeof fname, fmt, arg);
+    va_end(arg);
+    return bm_load(fname);
+}
+
 static int is_tga_file(BmReader rd);
+
+static uint32_t count_trailing_zeroes(uint32_t v);
 
 static Bitmap *bm_load_bmp_rd(BmReader rd);
 static Bitmap *bm_load_gif_rd(BmReader rd);
 static Bitmap *bm_load_pcx_rd(BmReader rd);
 static Bitmap *bm_load_tga_rd(BmReader rd);
+static Bitmap *bm_load_ppm_rd(BmReader rd);
 #ifdef USEPNG
 static Bitmap *bm_load_png_fp(FILE *f);
 #endif
@@ -332,9 +447,10 @@ static Bitmap *bm_load_jpg_fp(FILE *f);
 #endif
 
 Bitmap *bm_load_fp(FILE *f) {
+    SET_ERROR("no error");
     unsigned char magic[4];
 
-    long start, isbmp = 0, ispng = 0, isjpg = 0, ispcx = 0, isgif = 0, istga = 0;
+    long start, isbmp = 0, ispng = 0, isjpg = 0, ispcx = 0, isgif = 0, istga = 0, ispbm = 0;
 
     BmReader rd = make_file_reader(f);
     start = rd.ftell(rd.data);
@@ -353,6 +469,8 @@ Bitmap *bm_load_fp(FILE *f) {
             ispcx = 1;
         else if(magic[0] == 0x89 && !memcmp(magic+1, "PNG", 3))
             ispng = 1;
+        if(magic[0] == 'P' && strchr("123456", magic[1]))
+            ispbm = 1;
         else {
             /* Might be a TGA. TGA does not have a magic number :( */
             rd.fseek(rd.data, start, SEEK_SET);
@@ -367,7 +485,7 @@ Bitmap *bm_load_fp(FILE *f) {
     if(isjpg) {
 #ifdef USEJPG
         return bm_load_jpg_fp(f);
-#elif USESTB
+#elif defined(USESTB)
         int x, y, n;
         stbi_uc *data = stbi_load_from_file(f, &x, &y, &n, 4);
         if(!data) {
@@ -384,7 +502,7 @@ Bitmap *bm_load_fp(FILE *f) {
     if(ispng) {
 #ifdef USEPNG
         return bm_load_png_fp(f);
-#elif USESTB
+#elif defined(USESTB)
         int x, y, n;
         stbi_uc *data = stbi_load_from_file(f, &x, &y, &n, 4);
         if(!data) {
@@ -410,16 +528,21 @@ Bitmap *bm_load_fp(FILE *f) {
     if(istga) {
         return bm_load_tga_rd(rd);
     }
+    if(ispbm) {
+        return bm_load_ppm_rd(rd);
+    }
     SET_ERROR("unsupported file type");
     return NULL;
 }
 
 Bitmap *bm_load_mem(const unsigned char *buffer, long len) {
+    SET_ERROR("no error");
+
     unsigned char magic[4];
 
-    long isbmp = 0, ispng = 0, isjpg = 0, ispcx = 0, isgif = 0, istga = 0;
+    long isbmp = 0, ispng = 0, isjpg = 0, ispcx = 0, isgif = 0, istga = 0, ispbm = 0;
 
-    struct BmMemReader memr;
+    BmMemReader memr;
     memr.buffer = buffer;
     memr.len = len;
 
@@ -438,6 +561,8 @@ Bitmap *bm_load_mem(const unsigned char *buffer, long len) {
             ispcx = 1;
         else if(magic[0] == 0x89 && !memcmp(magic+1, "PNG", 3))
             ispng = 1;
+        if(magic[0] == 'P' && strchr("123456", magic[1]))
+            ispbm = 1;
         else {
             /* Might be a TGA. TGA does not have a magic number :( */
             rd.fseek(rd.data, 0, SEEK_SET);
@@ -454,7 +579,7 @@ Bitmap *bm_load_mem(const unsigned char *buffer, long len) {
         /* FIXME: JPG support */
         SET_ERROR("JPEG not supported by bm_load_mem()");
         return NULL;
-#elif USESTB
+#elif defined(USESTB)
         int x, y, n;
         stbi_uc *data = stbi_load_from_memory(buffer, len, &x, &y, &n, 4);
         if(!data) {
@@ -473,7 +598,7 @@ Bitmap *bm_load_mem(const unsigned char *buffer, long len) {
         /* FIXME: PNG support */
         SET_ERROR("PNG not supported by bm_load_mem()");
         return NULL;
-#elif USESTB
+#elif defined(USESTB)
         int x, y, n;
         stbi_uc *data = stbi_load_from_memory(buffer, len, &x, &y, &n, 4);
         if(!data) {
@@ -499,8 +624,84 @@ Bitmap *bm_load_mem(const unsigned char *buffer, long len) {
     if(istga) {
         return bm_load_tga_rd(rd);
     }
+    if(ispbm) {
+        return bm_load_ppm_rd(rd);
+    }
     SET_ERROR("unsupported file type"); /* should not happen */
     return NULL;
+}
+
+Bitmap *bm_load_base64(const char *base64) {
+    SET_ERROR("no error");
+    /* It would've been cool to read the Base64 data
+    in place with a custom BmReader object, but I
+    found that decoding first makes it easier to deal with
+    whitespace in the input data */
+    if(!base64)
+        return NULL;
+
+    if(!memcmp(base64, "data:", 5)) {
+        /* https://en.wikipedia.org/wiki/Data_URI_scheme
+        I can ignore the parameters because we deduce the file type from the data,
+        and assume the Base64 is in ASCII
+        */
+        base64 = strchr(base64, ',');
+        if(!base64) {
+            SET_ERROR("invalid data URI");
+            return NULL;
+        }
+        base64++;
+    }
+
+    long len = strlen(base64);
+    unsigned char *p, *buffer;
+    const char *q;
+
+    unsigned octet = 0, sextet, bits = 0;
+
+    buffer = CAST(unsigned char*)(malloc(len + 1));
+    if(!buffer) {
+        SET_ERROR("out of memory");
+        return NULL;
+    }
+
+    for(p = buffer, q = base64; *q; q++) {
+        if(isspace(*q))
+            continue;
+        else if(isupper(*q))
+            sextet = *q - 'A';
+        else if(islower(*q))
+            sextet = *q - 'a' + 26;
+        else if(isdigit(*q))
+            sextet = *q - '0' + 52;
+        else if(*q == '+')
+            sextet = 62;
+        else if(*q == '/')
+            sextet = 63;
+        else if(*q == '=')
+            break;
+        else {
+            SET_ERROR("invalid character in Base64 data");
+            free(buffer);
+            return NULL;
+        }
+
+        octet = (octet << 6) | sextet;
+        bits += 6;
+        if(bits > 8) {
+            *p++ = (octet >> (bits - 8)) & 0xFF;
+            bits -= 8;
+        }
+    }
+    if(bits == 8)
+        *p++ = octet & 0xFF;
+    assert((p - buffer) < len);
+
+    Bitmap *b = bm_load_mem(buffer, p - buffer);
+
+    free(buffer);
+
+    return b;
 }
 
 static Bitmap *bm_load_bmp_rd(BmReader rd) {
@@ -511,8 +712,13 @@ static Bitmap *bm_load_bmp_rd(BmReader rd) {
 
     Bitmap *b = NULL;
 
-    int rs, i, j;
-    char *data = NULL;
+    int i, j;
+    unsigned rs;
+    unsigned char *data = NULL;
+
+    uint32_t rgbmask[3] = { 0, 0, 0 };
+    uint32_t rgbshift[3] = { 0, 0, 0 };
+    float rgbcorr[3] = { 0.0f, 0.0f, 0.0f };
 
     long start_offset = rd.ftell(rd.data);
 
@@ -532,9 +738,19 @@ static Bitmap *bm_load_bmp_rd(BmReader rd) {
         return NULL;
     }
 
-    if((dib.bitspp != 8 && dib.bitspp != 24) || dib.compress_type != 0) {
-        /* Unsupported BMP type. TODO (maybe): support more types? */
+    if (dib.bitspp != 1 &&
+        dib.bitspp != 4 &&
+        dib.bitspp != 8 &&
+        dib.bitspp != 24 &&
+        dib.bitspp != 32) {
+        /* Unsupported BMP type. Only 16bpp is missing now */
         SET_ERROR("unsupported BMP type");
+        return NULL;
+    }
+
+    if(dib.compress_type != 0 && dib.compress_type != 3) {
+        /* Unsupported compression type. Only uncompressed BI_RGB & BI_BITFIELDS are ok */
+        SET_ERROR("unsupported compression type");
         return NULL;
     }
 
@@ -547,7 +763,7 @@ static Bitmap *bm_load_bmp_rd(BmReader rd) {
         if(!dib.ncolors) {
             dib.ncolors = 1 << dib.bitspp;
         }
-        palette = calloc(dib.ncolors, sizeof *palette);
+        palette = CAST(struct bmpfile_colinfo*)(calloc(dib.ncolors, sizeof *palette));
         if(!palette) {
             SET_ERROR("out of memory");
             goto error;
@@ -558,6 +774,34 @@ static Bitmap *bm_load_bmp_rd(BmReader rd) {
         }
     }
 
+    /* standard bitmasks for 16 & 32 bpp, required when biCompression = BI_RGB */
+    if (dib.bitspp == 32) {
+        rgbmask[0] = 0x00FF0000;
+        rgbmask[1] = 0x0000FF00;
+        rgbmask[2] = 0x000000FF;
+    } else if (dib.bitspp == 16) {
+        rgbmask[0] = 0x00007C00;
+        rgbmask[1] = 0x000003E0;
+        rgbmask[2] = 0x0000001F;
+    }
+
+    /* biCompression = BI_BITFIELDS, so read the bitmask */
+    if (dib.compress_type == 3) {
+        if (rd.fread(rgbmask, 1, 12, rd.data) != 12) {
+            SET_ERROR("fread on bitfields");
+            goto error;
+        }
+    }
+
+    /* 1. calculate how many bits we have to shift after masking */
+    /* 2. calculate the bit depth of the input channels */
+    /* 3. calculate the factor that maps the channel to 0-255 */
+    for (int i = 0; i < 3; ++i) {
+        rgbshift[i] = count_trailing_zeroes(rgbmask[i]);
+        uint32_t chdepth = rgbmask[i] >> rgbshift[i];
+        rgbcorr[i] = chdepth ? 255.0f / chdepth : 0.0f;
+    }
+
     if(rd.fseek(rd.data, hdr.bmp_offset + start_offset, SEEK_SET) != 0) {
         SET_ERROR("out of memory");
         goto error;
@@ -566,18 +810,24 @@ static Bitmap *bm_load_bmp_rd(BmReader rd) {
     rs = ((dib.width * dib.bitspp / 8) + 3) & ~3;
     assert(rs % 4 == 0);
 
-    data = malloc(rs * b->h);
-    if(!data) {
-        SET_ERROR("out of memory");
-        goto error;
-    }
-
     if(dib.bmp_bytesz == 0) {
+        data = CAST(unsigned char *)(malloc(rs * b->h));
+        if(!data) {
+            SET_ERROR("out of memory");
+            goto error;
+        }
+
         if(rd.fread(data, 1, rs * b->h, rd.data) != rs * b->h) {
             SET_ERROR("fread on data");
             goto error;
         }
     } else {
+        data = CAST(unsigned char *)(malloc(dib.bmp_bytesz));
+        if(!data) {
+            SET_ERROR("out of memory");
+            goto error;
+        }
+
         if(rd.fread(data, 1, dib.bmp_bytesz, rd.data) != dib.bmp_bytesz) {
             SET_ERROR("fread on data");
             goto error;
@@ -586,16 +836,59 @@ static Bitmap *bm_load_bmp_rd(BmReader rd) {
 
     if(dib.bitspp == 8) {
         for(j = 0; j < b->h; j++) {
+            int y = b->h - j - 1;
             for(i = 0; i < b->w; i++) {
-                uint8_t p = data[(b->h - (j) - 1) * rs + i];
+                int byt = y * rs + i;
+                uint8_t p = data[byt];
+
                 assert(p < dib.ncolors);
                 BM_SET_RGBA(b, i, j, palette[p].r, palette[p].g, palette[p].b, palette[p].a);
             }
         }
+    } else if(dib.bitspp == 4) {
+        for(j = 0; j < b->h; j++) {
+            int y = b->h - j - 1;
+            for(i = 0; i < b->w; i++) {
+                int byt = y * rs + (i >> 1);
+                uint8_t p = ( (i & 0x01) ? data[byt] : (data[byt] >> 4) ) & 0x0F;
+                assert(p < dib.ncolors);
+                BM_SET_RGBA(b, i, j, palette[p].r, palette[p].g, palette[p].b, palette[p].a);
+            }
+        }
+    } else if (dib.bitspp == 1) {
+        for(j = 0; j < b->h; j++) {
+            int y = b->h - j - 1;
+            for(i = 0; i < b->w; i++) {
+                int byt = y * rs + (i >> 3);
+                int bit = 7 - (i % 8);
+                uint8_t p = (data[byt] & (1 << bit)) >> bit;
+
+                assert(p < dib.ncolors);
+                BM_SET_RGBA(b, i, j, palette[p].r, palette[p].g, palette[p].b, palette[p].a);
+            }
+        }
+    } else if (dib.bitspp == 32) {
+        for(j = 0; j < b->h; j++) {
+            uint32_t y = b->h - j - 1;
+            for(i = 0; i < b->w; i++) {
+                uint32_t p = y * rs + i * 4;
+
+                uint32_t* pixel = (uint32_t*)(data + p);
+                uint32_t r_unc = (*pixel & rgbmask[0]) >> rgbshift[0];
+                uint32_t g_unc = (*pixel & rgbmask[1]) >> rgbshift[1];
+                uint32_t b_unc = (*pixel & rgbmask[2]) >> rgbshift[2];
+
+                BM_SET_RGBA(b, i, j,
+                    (unsigned char)(r_unc * rgbcorr[0]),
+                    (unsigned char)(g_unc * rgbcorr[1]),
+                    (unsigned char)(b_unc * rgbcorr[2]), 0xFF);
+            }
+        }
     } else {
         for(j = 0; j < b->h; j++) {
+            uint32_t y = b->h - j - 1;
             for(i = 0; i < b->w; i++) {
-                int p = ((b->h - (j) - 1) * rs + (i)*3);
+                uint32_t p = y * rs + i * 3;
                 BM_SET_RGBA(b, i, j, data[p+2], data[p+1], data[p+0], 0xFF);
             }
         }
@@ -617,6 +910,7 @@ static int bm_save_bmp(Bitmap *b, const char *fname);
 static int bm_save_gif(Bitmap *b, const char *fname);
 static int bm_save_pcx(Bitmap *b, const char *fname);
 static int bm_save_tga(Bitmap *b, const char *fname);
+static int bm_save_ppm(Bitmap *b, const char *fname);
 #ifdef USEPNG
 static int bm_save_png(Bitmap *b, const char *fname);
 #endif
@@ -625,17 +919,22 @@ static int bm_save_jpg(Bitmap *b, const char *fname);
 #endif
 
 int bm_save(Bitmap *b, const char *fname) {
+    SET_ERROR("no error");
+
     /* Chooses the file type to save as based on the
     extension in the filename */
     char *lname = strdup(fname), *c,
-        jpg = 0, png = 0, pcx = 0, gif = 0, tga = 0;
+        jpg = 0, png = 0, pcx = 0, gif = 0, tga = 0, ppm = 0;
+
     for(c = lname; *c; c++)
         *c = tolower(*c);
+
     png = !!strstr(lname, ".png");
     pcx = !!strstr(lname, ".pcx");
     gif = !!strstr(lname, ".gif");
     tga = !!strstr(lname, ".tga");
     jpg = !!strstr(lname, ".jpg") || !!strstr(lname, ".jpeg");
+    ppm = !!strstr(lname, ".pbm") || !!strstr(lname, ".pgm") || !!strstr(lname, ".ppm");
     free(lname);
 
 #ifdef USEPNG
@@ -656,11 +955,23 @@ int bm_save(Bitmap *b, const char *fname) {
         return bm_save_pcx(b, fname);
     if(tga)
         return bm_save_tga(b, fname);
+    if(ppm)
+        return bm_save_ppm(b, fname);
     return bm_save_bmp(b, fname);
 }
 
-static int bm_save_bmp(Bitmap *b, const char *fname) {
+int bm_savef(Bitmap *b, const char *fmt, ...) {
+	char fname[256];
+    va_list arg;
+    assert(b);
+    va_start(arg, fmt);
+    vsnprintf(fname, sizeof fname, fmt, arg);
+    va_end(arg);
+    return bm_save(b, fname);
+}
 
+static int bm_save_bmp(Bitmap *b, const char *fname) {
+    SET_ERROR("no error");
     /* TODO: Now that I have a function to count colors, maybe
         I should choose to save a bitmap as 8-bit if there
         are <= 256 colors in the image? */
@@ -671,7 +982,7 @@ static int bm_save_bmp(Bitmap *b, const char *fname) {
     FILE *f;
 
     int rs, padding, i, j;
-    char *data;
+    unsigned char *data;
 
     padding = 4 - ((b->w * 3) % 4);
     if(padding > 3) padding = 0;
@@ -714,7 +1025,7 @@ static int bm_save_bmp(Bitmap *b, const char *fname) {
     fwrite(&hdr, sizeof hdr, 1, f);
     fwrite(&dib, sizeof dib, 1, f);
 
-    data = malloc(dib.bmp_bytesz);
+    data = CAST(unsigned char *)(malloc(dib.bmp_bytesz));
     if(!data) {
         SET_ERROR("out of memory");
         fclose(f);
@@ -750,33 +1061,36 @@ static Bitmap *bm_load_png_fp(FILE *f) {
     unsigned char header[8];
     png_structp png = NULL;
     png_infop info = NULL;
-    png_bytep * rows = NULL;
+    png_bytep * volatile rows = NULL;
 
-    int w, h, ct, bpp, x, y, il;
+    volatile int w, h, ct, bpp, x, y, il, has_alpha = 0;
+
+    const char * volatile error_message = "";
 
     if((fread(header, 1, 8, f) != 8) || png_sig_cmp(header, 0, 8)) {
-        SET_ERROR("fread on PNG header");
+        error_message = "fread on PNG header";
         goto error;
     }
 
     png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if(!png) {
-        SET_ERROR("png_create_read_struct failed");
+        error_message = "png_create_read_struct failed";
         goto error;
     }
     info = png_create_info_struct(png);
     if(!info) {
-        SET_ERROR("png_create_info_struct failed");
+        error_message = "png_create_info_struct failed";
         goto error;
     }
+
     if(setjmp(png_jmpbuf(png))) {
-        SET_ERROR("png_read_info failed");
         goto error;
     }
 
     png_init_io(png, f);
     png_set_sig_bytes(png, 8);
 
+    error_message = "png_read_info failed";
     png_read_info(png, info);
 
     w = png_get_image_width(png, info);
@@ -785,7 +1099,6 @@ static Bitmap *bm_load_png_fp(FILE *f) {
     ct = png_get_color_type(png, info);
     il = png_get_interlace_type(png, info);
 
-    /* FIXME: I did encounter some 8-bit PNGs in the wild that failed here... */
     if(bpp == 16) {
 #ifdef PNG_READ_SCALE_16_TO_8_SUPPORTED
         png_set_scale_16(png);
@@ -794,30 +1107,31 @@ static Bitmap *bm_load_png_fp(FILE *f) {
 #endif
     }
 
-    if(ct == PNG_COLOR_TYPE_PALETTE)
+    if(ct == PNG_COLOR_TYPE_PALETTE) {
         png_set_palette_to_rgb(png);
-    if (ct == PNG_COLOR_TYPE_GRAY && bpp < 8)
+    } else if (ct == PNG_COLOR_TYPE_GRAY && bpp < 8) {
         png_set_expand_gray_1_2_4_to_8(png);
-    if(ct == PNG_COLOR_TYPE_GRAY)
+    } else if(ct == PNG_COLOR_TYPE_RGBA)
+        has_alpha = 1;
+
+    if(ct == PNG_COLOR_TYPE_GRAY || ct == PNG_COLOR_TYPE_GRAY_ALPHA) {
         png_set_gray_to_rgb(png);
+        has_alpha = (ct == PNG_COLOR_TYPE_GRAY_ALPHA);
+    }
 
     if(png_get_valid(png, info, PNG_INFO_tRNS))
         png_set_tRNS_to_alpha(png);
 
-    if(ct == PNG_COLOR_TYPE_GRAY || ct == PNG_COLOR_TYPE_GRAY_ALPHA)
-        png_set_gray_to_rgb(png);
-
     if(il)
         png_set_interlace_handling(png);
+
+    error_message = "png_read_update_info failed";
 
     png_read_update_info(png, info);
 
     bmp = bm_create(w,h);
 
-    if(setjmp(png_jmpbuf(png))) {
-        SET_ERROR("png_read_image failed");
-        goto error;
-    }
+    error_message = "png_read_image failed";
 
     rows = ALLOCA(h * sizeof *rows);
     for(y = 0; y < h; y++)
@@ -826,7 +1140,7 @@ static Bitmap *bm_load_png_fp(FILE *f) {
     png_read_image(png, rows);
 
     /* Convert to my internal representation */
-    if(ct == PNG_COLOR_TYPE_RGBA) {
+    if(has_alpha) {
         for(y = 0; y < h; y++) {
             png_byte *row = rows[y];
             for(x = 0; x < w; x++) {
@@ -834,7 +1148,7 @@ static Bitmap *bm_load_png_fp(FILE *f) {
                 BM_SET_RGBA(bmp, x, y, ptr[0], ptr[1], ptr[2], ptr[3]);
             }
         }
-    } else if(ct == PNG_COLOR_TYPE_RGB) {
+    } else {
         for(y = 0; y < h; y++) {
             png_byte *row = rows[y];
             for(x = 0; x < w; x++) {
@@ -846,11 +1160,12 @@ static Bitmap *bm_load_png_fp(FILE *f) {
 
     goto done;
 error:
+    SET_ERROR(error_message);
     if(bmp) bm_free(bmp);
     bmp = NULL;
 done:
     if (info != NULL) png_free_data(png, info, PNG_FREE_ALL, -1);
-    if (png != NULL) png_destroy_read_struct(&png, NULL, NULL);
+    if (png != NULL) png_destroy_read_struct(&png, &info, NULL);
     if(rows) {
         for(y = 0; y < h; y++) {
             free(rows[y]);
@@ -864,7 +1179,7 @@ static int bm_save_png(Bitmap *b, const char *fname) {
 
     png_structp png = NULL;
     png_infop info = NULL;
-    int y, rv = 1;
+    int y, rv;
 
 #ifdef SAFE_C11
     FILE *f;
@@ -930,6 +1245,7 @@ static int bm_save_png(Bitmap *b, const char *fname) {
         goto error;
     }
 
+    rv = 1;
     goto done;
 error:
     rv = 0;
@@ -957,7 +1273,7 @@ static Bitmap *bm_load_jpg_fp(FILE *f) {
     struct jpg_err_handler jerr;
     Bitmap *bmp = NULL;
     int i, row_stride;
-	unsigned int j;
+    unsigned int j;
     unsigned char *data;
     JSAMPROW row_pointer[1];
 
@@ -1087,6 +1403,7 @@ static Bitmap *bm_load_jpg_rw(SDL_RWops *rw);
 #  endif
 
 Bitmap *bm_load_rw(SDL_RWops *rw) {
+    SET_ERROR("no error");
     unsigned char magic[3];
     long start = SDL_RWtell(rw);
     long isbmp = 0, ispng = 0, isjpg = 0, ispcx = 0, isgif = 0;
@@ -1422,7 +1739,7 @@ static int cnt_comp_noalpha(const void*ap, const void*bp) {
 static int count_colors_build_palette(Bitmap *b, struct rgb_triplet rgb[256]) {
     int count = 1, i, c;
     int npx = b->w * b->h;
-    int *sort = ALLOCA(npx * sizeof *sort);
+    int *sort = CAST(int *)(ALLOCA(npx * sizeof *sort));
     if (!sort) return 0;
     memcpy(sort, b->data, npx * sizeof *sort);
     qsort(sort, npx, sizeof(int), cnt_comp_noalpha);
@@ -1466,7 +1783,8 @@ static int bsrch_palette_lookup(struct rgb_triplet rgb[], int c, int imin, int i
 
 /* Comparison function for sorting an array of rgb_triplets with qsort() */
 static int comp_rgb(const void *ap, const void *bp) {
-    const struct rgb_triplet *ta = ap, *tb = bp;
+    const struct rgb_triplet *ta = CAST(const struct rgb_triplet*)(ap),
+                             *tb = CAST(const struct rgb_triplet*)(bp);
     int a = (ta->r << 16) | (ta->g << 8) | ta->b;
     int b = (tb->r << 16) | (tb->g << 8) | tb->b;
     return a - b;
@@ -1479,6 +1797,8 @@ http://commandlinefanatic.com/cgi-bin/showarticle.cgi?article=art011
 http://www.matthewflickinger.com/lab/whatsinagif/bits_and_bytes.asp
 */
 
+enum gif_type {gif_87a, gif_89a};
+
 #pragma pack(push, 1) /* Don't use any padding */
 typedef struct {
 
@@ -1488,7 +1808,7 @@ typedef struct {
         char version[3];
     } header;
 
-    enum {gif_87a, gif_89a} version;
+    enum gif_type version;
 
     /* logical screen descriptor */
     struct {
@@ -1550,7 +1870,7 @@ static Bitmap *bm_load_gif_rd(BmReader rd) {
     GIF gif;
 
     /* From the packed fields in the logical screen descriptor */
-    int gct, sgct;
+    unsigned gct, sgct;
 
     struct rgb_triplet *palette = NULL;
 
@@ -1600,7 +1920,7 @@ static Bitmap *bm_load_gif_rd(BmReader rd) {
     if(gct) {
         /* Section 19. Global Color Table. */
         struct rgb_triplet *bg;
-        palette = calloc(sgct, sizeof *palette);
+        palette = CAST(struct rgb_triplet*)(calloc(sgct, sizeof *palette));
         if (!palette)
             return NULL;
 
@@ -1692,7 +2012,7 @@ static int gif_read_image(BmReader rd, GIF *gif, struct rgb_triplet *ct, int sct
     int rv = 1;
 
     /* Packed fields in the Image Descriptor */
-    int lct, slct;
+    unsigned int lct, slct;
 
     memset(&gce, 0, sizeof gce);
 
@@ -1722,7 +2042,7 @@ static int gif_read_image(BmReader rd, GIF *gif, struct rgb_triplet *ct, int sct
         /* raise 2 to the power of [slct+1] */
         slct = 1 << (slct + 1);
 
-        ct = calloc(slct, sizeof *ct);
+        ct = CAST(struct rgb_triplet*)(calloc(slct, sizeof *ct));
 
         if(rd.fread(ct, sizeof *ct, slct, rd.data) != slct) {
             free(ct);
@@ -1755,7 +2075,7 @@ static unsigned char *gif_data_sub_blocks(BmReader rd, int *r_tsize) {
         SET_ERROR("error reading GIF subblock size");
         return NULL;
     }
-    void *tbuf = realloc(buffer, 1);
+    unsigned char *tbuf = CAST(unsigned char*)(realloc(buffer, 1));
     if (!tbuf) {
         free(buffer);
         return NULL;
@@ -1763,7 +2083,7 @@ static unsigned char *gif_data_sub_blocks(BmReader rd, int *r_tsize) {
     buffer = tbuf;
 
     while(size > 0) {
-        tbuf = realloc(buffer, tsize + size + 1);
+        tbuf = CAST(unsigned char*)(realloc(buffer, tsize + size + 1));
         if (!tbuf) {
             free(buffer);
             return NULL;
@@ -1924,16 +2244,27 @@ static unsigned char *lzw_decode_bytes(unsigned char *bytes, int data_len, int c
 
     /* Dictionary */
     int di, dict_size = 1 << (code_size + 1);
-    gif_dict *dict = realloc(NULL, dict_size * sizeof *dict);
+    gif_dict *dict = CAST(gif_dict*)(realloc(NULL, dict_size * sizeof *dict));
+    if (!dict)
+        return NULL;
 
     /* Stack so we don't need to recurse down the dictionary */
     int stack_size = 2;
-    unsigned char *stack = realloc(NULL, stack_size);
+    unsigned char *stack = CAST(unsigned char *)(realloc(NULL, stack_size));
+    if (!stack) {
+        free(dict);
+        return NULL;
+    }
     int sp = 0;
     int sym = -1, ptr;
 
     *out_len = 0;
-    out = realloc(NULL, out_size);
+    out = CAST(unsigned char *)(realloc(NULL, out_size));
+    if (!out) {
+        free(dict);
+        free(stack);
+        return NULL;
+    }
 
     /* Initialize the dictionary */
     for(di = 0; di < dict_size; di++) {
@@ -1958,6 +2289,8 @@ static unsigned char *lzw_decode_bytes(unsigned char *bytes, int data_len, int c
         if(code > di) {
             /* Shouldn't happen, unless file corrupted */
             free(out);
+            free(dict);
+            free(stack);
             return NULL;
         }
 
@@ -1975,7 +2308,7 @@ static unsigned char *lzw_decode_bytes(unsigned char *bytes, int data_len, int c
             stack[sp++] = dict[ptr].code;
             if(sp == stack_size) {
                 stack_size <<= 1;
-                void *tbuf = realloc(stack, stack_size);
+                unsigned char *tbuf = CAST(unsigned char*)(realloc(stack, stack_size));
                 if (!tbuf) {
                     free(stack);
                     return NULL;
@@ -1991,7 +2324,7 @@ static unsigned char *lzw_decode_bytes(unsigned char *bytes, int data_len, int c
             out[outp++] = stack[--sp];
             if(outp == out_size) {
                 out_size <<= 1;
-                void *tbuf = realloc(out, out_size);
+                unsigned char *tbuf = CAST(unsigned char*)(realloc(out, out_size));
                 if (!tbuf) {
                     free(out);
                     return NULL;
@@ -2011,13 +2344,12 @@ static unsigned char *lzw_decode_bytes(unsigned char *bytes, int data_len, int c
             if(di == dict_size && code_size < 11) {
                 code_size++;
                 dict_size = 1 << (code_size + 1);
-                void *tmp = realloc(dict, dict_size * sizeof *dict);
+                gif_dict *tmp = CAST(gif_dict*)(realloc(dict, dict_size * sizeof *dict));
                 if (!tmp) {
                     free(dict);
                     return NULL;
                 }
                 dict = tmp;
-
             }
         }
 
@@ -2039,17 +2371,20 @@ static void lzw_emit_code(unsigned char **buffer, int *buf_size, int *pos, int c
         if(!bit) {
             if(byte == *buf_size) {
                 *buf_size <<= 1;
-                void *tmp = realloc(*buffer, *buf_size);
+                unsigned char *tmp = CAST(unsigned char *)(realloc(*buffer, *buf_size));
                 if (!tmp) {
                     free(*buffer);
                     return;
                 }
                 *buffer = tmp;
             }
+            assert(byte < *buf_size);
             (*buffer)[byte] = 0x00;
         }
-        if(c & m)
+        if (c & m) {
+            assert(byte < *buf_size);
             (*buffer)[byte] |= (1 << bit);
+        }
     }
     *pos += bits;
 }
@@ -2063,11 +2398,17 @@ static unsigned char *lzw_encode_bytes(unsigned char *bytes, int data_len, int c
 
     /* dictionary */
     int i, di, dict_size = 1 << (code_size + 1);
-    gif_dict *dict = realloc(NULL, dict_size * sizeof *dict);
+    gif_dict *dict = CAST(gif_dict*)(realloc(NULL, dict_size * sizeof *dict));
+    if (!dict)
+        return NULL;
 
     int buf_size = 4;
     int pos = 0;
-    unsigned char *buffer = realloc(NULL, buf_size);
+    unsigned char *buffer = CAST(unsigned char *)(realloc(NULL, buf_size));
+    if (!buffer) {
+        free(dict);
+        return NULL;
+    }
 
     int ii, string, prev, tlen;
 
@@ -2098,6 +2439,7 @@ reread:
         /* Find it in the dictionary; If the entry is in the dict, it can't be
         before dict[string], therefore we can eliminate the first couple of entries. */
         for(res = -1, i = string>0?string:0; i < di; i++) {
+            assert(i < dict_size);
             if(dict[i].prev == string && dict[i].code == character) {
                 res = i;
                 break;
@@ -2118,7 +2460,7 @@ reread:
                 if(code_size < 11) {
                     code_size++;
                     dict_size = 1 << (code_size + 1);
-                    void *tmp = realloc(dict, dict_size * sizeof *dict);
+                    gif_dict *tmp = CAST(gif_dict*)(realloc(dict, dict_size * sizeof *dict));
                     if (!tmp) {
                         free(dict);
                         return NULL;
@@ -2145,13 +2487,15 @@ reread:
         }
     }
 
-    lzw_emit_code(&buffer, &buf_size, &pos, prev,code_size + 1);
-    lzw_emit_code(&buffer, &buf_size, &pos, end,code_size + 1);
+    lzw_emit_code(&buffer, &buf_size, &pos, prev, code_size + 1);
+    lzw_emit_code(&buffer, &buf_size, &pos, end, code_size + 1);
 
     /* Total length */
     tlen = (pos >> 3);
     if(pos & 0x07) tlen++;
     *out_len = tlen;
+
+    free(dict);
 
     return buffer;
 }
@@ -2166,7 +2510,7 @@ static int bm_save_gif(Bitmap *b, const char *fname) {
     unsigned char code_size = 0x08;
 
     /* For encoding */
-    int len, x, y, p;
+    int len = 0, x, y, p;
     unsigned char *bytes, *pixels;
 
 #ifdef SAFE_C11
@@ -2183,6 +2527,8 @@ static int bm_save_gif(Bitmap *b, const char *fname) {
         return 0;
     }
 #endif
+
+    memset(gct, 0, sizeof(gct));
 
     memcpy(gif.header.signature, "GIF", 3);
     memcpy(gif.header.version, "89a", 3);
@@ -2259,7 +2605,7 @@ static int bm_save_gif(Bitmap *b, const char *fname) {
     }
 
     /* Map the pixels in the image to their palette indices */
-    pixels = malloc(b->w * b->h);
+    pixels = CAST(unsigned char*)(malloc(b->w * b->h));
     for(y = 0, p = 0; y < b->h; y++) {
         for(x = 0; x < b->w; x++) {
             int i, c = bm_get(b, x, y);
@@ -2274,7 +2620,7 @@ static int bm_save_gif(Bitmap *b, const char *fname) {
 
     if(fwrite(&gif.header, sizeof gif.header, 1, f) != 1 ||
         fwrite(&gif.lsd, sizeof gif.lsd, 1, f) != 1 ||
-        fwrite(gct, sizeof *gct, sgct, f) != sgct) {
+        fwrite(gct, sizeof *gct, sgct, f) != (unsigned)sgct) {
 
         SET_ERROR("couldn't write GIF header");
         fclose(f);
@@ -2610,6 +2956,12 @@ static int is_tga_file(BmReader rd) {
        an educated guess as to whether it looks like one from its header */
     struct tga_header head;
     long start = rd.ftell(rd.data), rv = 1;
+
+    static const uint8_t tga_types[] = {0,1,2,3,9,10,11, /* 32,33 */};
+    /* 32 and 33 seem complex and not widely supported, so I'm not going
+    to bother with them. */
+    int n, m = sizeof(tga_types)/ sizeof(tga_types[0]);
+
     if(rd.fread(&head, sizeof head, 1, rd.data) != 1) {
         rv = 0;
         goto done;
@@ -2619,10 +2971,6 @@ static int is_tga_file(BmReader rd) {
         rv = 0;
         goto done;
     }
-    static const uint8_t tga_types[] = {0,1,2,3,9,10,11, /* 32,33 */};
-    /* 32 and 33 seem complex and not widely supported, so I'm not going
-    to bother with them. */
-    int n, m = sizeof(tga_types)/ sizeof(tga_types[0]);
     for(n = 0; n < m; n++) {
         if(head.img_type == tga_types[n])
             break;
@@ -2659,7 +3007,8 @@ static int tga_decode_pixel(Bitmap *bmp, int x, int y, uint8_t bytes[], struct t
             int index = bytes[0];
             bpp = head->map_spec.size;
             bytes = &color_map[index * bpp / 8 - head->map_spec.index];
-        } /* intensional drop through */
+        }
+        // fall through
         case 2: {
             switch(bpp) {
             case 15:
@@ -2686,6 +3035,7 @@ static int tga_decode_pixel(Bitmap *bmp, int x, int y, uint8_t bytes[], struct t
 
 static Bitmap *bm_load_tga_rd(BmReader rd) {
     struct tga_header head;
+    int i = 0, j, np;
     assert(sizeof(struct tga_header) == 18);
 
     /* Just try to catch cases where is_tga_file() might fail... */
@@ -2707,9 +3057,11 @@ static Bitmap *bm_load_tga_rd(BmReader rd) {
     uint8_t bytes[4];
     uint8_t *color_map = NULL;
     Bitmap *bmp = bm_create(head.img_spec.w, head.img_spec.h);
+    if(!bmp)
+        return NULL;
 
     if(head.map_type) {
-        color_map = calloc(head.map_spec.length, head.map_spec.size);
+        color_map = CAST(uint8_t*)(calloc(head.map_spec.length, head.map_spec.size));
         int r = rd.fread(color_map, head.map_spec.size / 8, head.map_spec.length, rd.data);
         if(r != head.map_spec.length) {
             SET_ERROR("error reading TGA color map");
@@ -2717,8 +3069,7 @@ static Bitmap *bm_load_tga_rd(BmReader rd) {
         }
     }
 
-    int i = 0, j;
-    int np = head.img_spec.w * head.img_spec.h;
+    np = head.img_spec.w * head.img_spec.h;
 
     while(i < np) {
 
@@ -2775,11 +3126,13 @@ static int bm_save_tga(Bitmap *b, const char *fname) {
     FILE *f;
     errno_t err = fopen_s(&f, fname, "wb");
     if (err != 0) {
+        SET_ERROR("tga: couldn't open file for writing");
         return 0;
     }
 #else
     FILE *f = fopen(fname, "wb");
     if(!f) {
+        SET_ERROR("tga: couldn't open file for writing");
         return 0;
     }
 #endif
@@ -2846,32 +3199,377 @@ static int bm_save_tga(Bitmap *b, const char *fname) {
     return 1;
 }
 
-#if USESTB
+/*
+Netpbm support
+https://en.wikipedia.org/wiki/Netpbm
+
+Specs and example files can be found here:
+http://paulbourke.net/dataformats/ppm/
+https://people.sc.fsu.edu/~jburkardt/data/pbmb/pbmb.html
+https://people.sc.fsu.edu/~jburkardt/data/pgmb/pgmb.html
+https://people.sc.fsu.edu/~jburkardt/data/ppmb/ppmb.html
+*/
+
+static char *tokenize_pbm(char *s, char **r) {
+    char *p = s, *e;
+
+    if(!s && r)
+        p = *r;
+
+    if(!p) return NULL;
+
+start:
+    while(isspace(*p))
+        p++;
+    if(*p == '\0')
+        return NULL;
+    if(*p == '#') {
+        while(*p != '\n') {
+            if(*p == '\0')
+                return NULL;
+            p++;
+        }
+        goto start;
+    }
+
+    for(e = p; *e && !isspace(*e); e++);
+
+    if(r) {
+        if(*e != '\0')
+            *r = e + 1;
+        else
+            *r = e;
+    }
+
+    *e = '\0';
+
+    return p;
+}
+
+static Bitmap *bm_load_ppm_rd(BmReader rd) {
+
+    Bitmap *bm = NULL;
+
+    rd.fseek(rd.data, 0, SEEK_END);
+    long len = rd.ftell(rd.data);
+    rd.fseek(rd.data, 0, SEEK_SET);
+
+    char *str = malloc(len+2);
+    if(!str) {
+        SET_ERROR("ppm: out of memory");
+        return NULL;
+    }
+    long read = rd.fread(str, 1, len, rd.data);
+
+    if(read != len) {
+        SET_ERROR("ppm: error reading data");
+        free(str);
+        return NULL;
+    }
+    str[len] = '\0';
+
+    char *p, *r;
+    int type = 0, w, h, d = 1, x, y;
+
+    p = tokenize_pbm(str, &r);
+    if(!p) {
+        SET_ERROR("ppm: couldn't determine type");
+        goto error;
+    }
+
+    if(p[0] != 'P' || !strchr("123456", p[1]) || p[2]) {
+        SET_ERROR("ppm: invalid type");
+        goto error;
+    }
+
+    type = p[1] - '0';
+
+#define GET_INT(v, error_msg)   do{ if(!(p = tokenize_pbm(NULL, &r))) { \
+                                    SET_ERROR(error_msg); \
+                                    goto error;\
+                                }\
+                                v = atoi(p); } while(0)
+
+    GET_INT(w, "ppm: bad width");
+    GET_INT(h, "ppm: bad height");
+
+    if(type != 1 && type != 4)
+        GET_INT(d, "ppm: bad depth");
+
+    if(w <= 0 || h <= 0 || d <= 0) {
+        SET_ERROR("ppm: invalid dimensions");
+        goto error;
+    }
+
+    bm = bm_create(w,h);
+
+    int pr = 0, pg = 0, pb = 0, c;
+
+    switch(type) {
+        case 1: {
+            x = 0;
+            y = 0;
+            while(y < h) {
+                if(r - str >= len) {
+                    SET_ERROR("ppm: unexpected end of file");
+                    goto error;
+                }
+                while(isspace(*r))
+                    r++;
+                if(!r[0]) {
+                    SET_ERROR("ppm: insufficient data");
+                    goto error;
+                }
+                else if(r[0] == '#') {
+                    while(r[0] && r[0] != '\n')
+                        r++;
+                    continue;
+                }
+                else if(r[0] == '0')
+                    bm_set(bm, x, y, 0xFFFFFFFF);
+                else if(r[0] == '1')
+                    bm_set(bm, x, y, 0xFF000000);
+                else {
+                    SET_ERROR("ppm: bad data");
+                    goto error;
+                }
+                r++;
+                if(++x == w) {
+                    x = 0;
+                    y++;
+                }
+            }
+        } break;
+        case 2: {
+            for(y = 0; y < h; y++) {
+                for(x = 0; x < w; x++) {
+                    GET_INT(pr, "ppm: bad value");
+                    pr = pr * 255 / d;
+                    c = 0xFF000000 | (pr << 16) | (pr << 8) | pr;
+                    bm_set(bm, x, y, c);
+                }
+            }
+        } break;
+        case 3: {
+            for(y = 0; y < h; y++) {
+                for(x = 0; x < w; x++) {
+                    GET_INT(pr, "ppm: bad R value");
+                    pr = pr * 255 / d;
+                    GET_INT(pg, "ppm: bad G value");
+                    pg = pg * 255 / d;
+                    GET_INT(pb, "ppm: bad B value");
+                    pb = pb * 255 / d;
+                    c = 0xFF000000 | (pr << 16) | (pg << 8) | pb;
+                    bm_set(bm, x, y, c);
+                }
+            }
+        } break;
+        case 4: {
+            for(y = 0; y < h; y++) {
+                int mask = 0x80;
+                unsigned char byte = *(r++);
+                for(x = 0; x < w; x++) {
+                    bm_set(bm, x, y, (byte & mask) ? 0xFF000000 : 0xFFFFFFFF);
+                    if(!(mask >>= 1)) {
+                        if(r - str >= len) {
+                            SET_ERROR("ppm: unexpected end of file");
+                            goto error;
+                        }
+                        mask = 0x80;
+                        byte = *(r++);
+                    }
+                }
+            }
+        } break;
+        case 5: {
+            for(y = 0; y < h; y++) {
+                for(x = 0; x < w; x++) {
+                    if(r - str >= len) {
+                        SET_ERROR("ppm: unexpected end of file");
+                        goto error;
+                    }
+                    pr = (*(r++) * 255 / d) & 0xFF;
+                    c = 0xFF000000 | (pr << 16) | (pr << 8) | pr;
+                    bm_set(bm, x, y, c);
+                }
+            }
+        } break;
+        case 6: {
+            for(y = 0; y < h; y++) {
+                for(x = 0; x < w; x++) {
+                    if(r - str > len - 3) {
+                        SET_ERROR("ppm: unexpected end of file");
+                        goto error;
+                    }
+                    pr = (*(r++) * 255 / d) & 0xFF;
+                    pg = (*(r++) * 255 / d) & 0xFF;
+                    pb = (*(r++) * 255 / d) & 0xFF;
+                    c = 0xFF000000 | (pr << 16) | (pg << 8) | pb;
+                    bm_set(bm, x, y, c);
+                }
+            }
+        } break;
+        default:
+            SET_ERROR("ppm: format not supported");
+            goto error;
+    }
+
+    goto done;
+error:
+    if(bm) bm_free(bm);
+    bm = NULL;
+done:
+    free(str);
+    return bm;
+
+#undef GET_INT
+
+}
+
+static int bm_save_ppm(Bitmap *b, const char *fname) {
+
+#if !PPM_BINARY
+    const char *file_mode = "w";
+#else
+    const char *file_mode = "wb";
+#endif
+
+    int type = 3;
+    char *ext = strrchr(fname, '.');
+    if(!ext || strlen(ext) != 4) {
+        SET_ERROR("ppm: bad extension");
+        return 0;
+    }
+
+    switch(ext[2]) {
+#if !PPM_BINARY
+        case 'b': case 'B': type = 1; break;
+        case 'g': case 'G': type = 2; break;
+        case 'p': case 'P': type = 3; break;
+#else
+        case 'b': case 'B': type = 4; break;
+        case 'g': case 'G': type = 5; break;
+        case 'p': case 'P': type = 6; break;
+#endif
+    }
+
+#ifdef SAFE_C11
+    FILE *f;
+    errno_t err = fopen_s(&f, fname, file_mode);
+    if (err != 0) {
+        SET_ERROR("ppm: couldn't open file for writing");
+        return 0;
+    }
+#else
+    FILE *f = fopen(fname, file_mode);
+    if(!f) {
+        SET_ERROR("ppm: couldn't open file for writing");
+        return 0;
+    }
+#endif
+
+    fprintf(f, "P%d\n", type);
+    fprintf(f, "%d %d\n", b->w, b->h);
+    if(type != 1 && type != 4)
+        fprintf(f, "255\n");
+
+    int x, y;
+    unsigned char p[3] = {0, 0, 0};
+
+    switch(type) {
+        case 1:
+            for(y = 0; y < b->h; y++) {
+                for(x = 0; x < b->w; x++) {
+                    unsigned int c = BM_GET(b, x, y);
+                    fprintf(f, "%c", c & 0xFFFFFF ? '0' : '1');
+                }
+                fputc('\n',f);
+            }
+            break;
+        case 2:
+            for(y = 0; y < b->h; y++) {
+                for(x = 0; x < b->w; x++) {
+                    unsigned int c = BM_GET(b, x, y);
+                    fprintf(f, "%u ", bm_graypixel(c));
+                }
+                fputc('\n',f);
+            }
+            break;
+        case 3:
+            for(y = 0; y < b->h; y++) {
+                for(x = 0; x < b->w; x++) {
+                    unsigned int c = BM_GET(b, x, y);
+                    bm_get_rgb(c, &p[0], &p[1], &p[2]);
+                    fprintf(f, "%u %u %u ", p[0], p[1], p[2]);
+                }
+                fputc('\n',f);
+            }
+            break;
+        case 4: {
+            for(y = 0; y < b->h; y++) {
+                int mask = 0x80;
+                unsigned char byte = 0;
+                for(x = 0; x < b->w; x++) {
+                    unsigned int c = BM_GET(b, x, y);
+                    if(!(c & 0xFFFFFF))
+                        byte |= mask;
+                    if(!(mask >>= 1)) {
+                        fwrite(&byte, 1, 1, f);
+                        byte = 0;
+                        mask = 0x80;
+                    }
+                }
+                if(mask)
+                    fwrite(&byte, 1, 1, f);
+            }
+        } break;
+        case 5: {
+            for(y = 0; y < b->h; y++) {
+                for(x = 0; x < b->w; x++) {
+                    unsigned int c = BM_GET(b, x, y);
+                    unsigned char g = (unsigned char)bm_graypixel(c);
+                    fwrite(&g, 1, 1, f);
+                }
+            }
+        } break;
+        case 6:
+            for(y = 0; y < b->h; y++) {
+                for(x = 0; x < b->w; x++) {
+                    unsigned int c = BM_GET(b, x, y);
+                    bm_get_rgb(c, &p[0], &p[1], &p[2]);
+                    fwrite(&p, 1, 3, f);
+                }
+            }
+            break;
+        default: break;
+    }
+    if(type <= 3)
+        fprintf(f, "\n");
+
+
+    if(type == 4 && p[1])
+        fwrite(&p, 1, 1, f);
+
+    fclose(f);
+    return 1;
+}
+
+
+#if defined(USESTB)
 /*
 In the future, I can add support for stb_image_write.h as well.
 See https://github.com/nothings/stb/blob/master/stb_image_write.h
 */
 Bitmap *bm_from_stb(int w, int h, unsigned char *data) {
-    Bitmap *b = malloc(sizeof *b);
-    int i;
 
-    b->w = w;
-    b->h = h;
-
-    b->clip.x0 = 0;
-    b->clip.y0 = 0;
-    b->clip.x1 = w;
-    b->clip.y1 = h;
-
-    b->font = NULL;
-    bm_reset_font(b);
-
-    bm_set_color(b, 0xFFFFFFFF);
+    Bitmap *b = bm_create_internal(w, h);
     b->data = data;
+    b->flags |= FLAG_OWNS_DATA;
 
 #if !ABGR
     /* Unfortunately, the R and B channels of stb_image are
         swapped from the format I'd prefer them in. */
+    int i;
     for(i = 0; i < w * h * 4; i += 4) {
         unsigned char c = data[i];
         data[i] = data[i+2];
@@ -2896,7 +3594,7 @@ Bitmap *bm_copy(Bitmap *b) {
     memcpy(out->data, b->data, BM_BLOB_SIZE(b));
 
     out->color = b->color;
-    out->font = b->font;
+    bm_set_font(out, b->font);
 
     memcpy(&out->clip, &b->clip, sizeof b->clip);
 
@@ -2905,42 +3603,42 @@ Bitmap *bm_copy(Bitmap *b) {
 
 Bitmap *bm_crop(Bitmap *b, int x, int y, int w, int h) {
     Bitmap *o = bm_create(w, h);
-    if(!o) return NULL;
+    if(!o)
+        return NULL;
     bm_blit(o, 0, 0, b, x, y, w, h);
     return o;
 }
 
 void bm_free(Bitmap *b) {
-    if(!b) return;
-    if(b->data) free(b->data);
+    if(!b)
+        return;
+
+    assert(b->ref_count == 0 && "Attempt to free() a bitmap that still has references");
+    if((b->flags & FLAG_OWNS_DATA) && b->data)
+        free(b->data);
+    bm_font_release(b->font);
     free(b);
 }
 
-Bitmap *bm_bind(int w, int h, unsigned char *data) {
-    Bitmap *b = malloc(sizeof *b);
-    if(!b) {
-        SET_ERROR("out of memory");
+Bitmap *bm_retain(Bitmap *b) {
+    if(!b)
         return NULL;
-    }
-    return bm_bind_static(b, data, w, h);
+    b->ref_count++;
+    return b;
 }
 
+void bm_release(Bitmap *b) {
+    assert(b->ref_count > 0 && "Attempt to release a bitmap that is not reference counted");
+    b->ref_count--;
+    if(!b->ref_count)
+        bm_free(b);
+}
 
-Bitmap *bm_bind_static(Bitmap *b, unsigned char *data, int w, int h) {
-    b->w = w;
-    b->h = h;
-
-    b->clip.x0 = 0;
-    b->clip.y0 = 0;
-    b->clip.x1 = w;
-    b->clip.y1 = h;
-
+Bitmap *bm_bind(int w, int h, unsigned char *data) {
+    Bitmap *b = bm_create_internal(w, h);
+    if(!b)
+        return NULL;
     b->data = data;
-
-    b->font = NULL;
-    bm_reset_font(b);
-
-    bm_set_color(b, 0xFFFFFFFF);
     return b;
 }
 
@@ -2949,14 +3647,14 @@ void bm_rebind(Bitmap *b, unsigned char *data) {
 }
 
 void bm_unbind(Bitmap *b) {
-    if(!b) return;
-    free(b);
+    assert(!(b->flags & FLAG_OWNS_DATA));
+    bm_free(b);
 }
 
 void bm_flip_vertical(Bitmap *b) {
     int y;
     size_t s = BM_ROW_SIZE(b);
-    unsigned char *trow = ALLOCA(s);
+    unsigned char *trow = CAST(unsigned char*)(ALLOCA(s));
     if (!trow)
         return;
     for(y = 0; y < b->h/2; y++) {
@@ -2971,6 +3669,7 @@ void bm_flip_vertical(Bitmap *b) {
 
 unsigned int bm_get(Bitmap *b, int x, int y) {
     unsigned int *p;
+    assert(b);
     assert(x >= 0 && x < b->w && y >= 0 && y < b->h);
     p = (unsigned int*)(b->data + y * BM_ROW_SIZE(b) + x * BM_BPP);
     return *p;
@@ -2978,6 +3677,7 @@ unsigned int bm_get(Bitmap *b, int x, int y) {
 
 void bm_set(Bitmap *b, int x, int y, unsigned int c) {
     unsigned int *p;
+    assert(b);
     assert(x >= 0 && x < b->w && y >= 0 && y < b->h);
     p = (unsigned int*)(b->data + y * BM_ROW_SIZE(b) + x * BM_BPP);
     *p = c;
@@ -3003,14 +3703,22 @@ Bitmap *bm_from_Xbm(int w, int h, unsigned char *data) {
     return bmp;
 }
 
+/*
+See also https://www.fileformat.info/format/xpm/egff.htm
+*/
 Bitmap *bm_from_Xpm(char *xpm[]) {
 #define XPM_MAX_COLORS 256
-#define XPM_TRANS_COLOR 1
     Bitmap *b;
     int w, h, nc, cp;
     int i, j, r;
     unsigned int colors[XPM_MAX_COLORS];
     unsigned char chars[XPM_MAX_COLORS];
+
+    unsigned int tc = 0; /* transparent color */
+    int tci = XPM_MAX_COLORS;
+
+    /* FYI: It is possible for the first row to have 6 values, where
+    the last two will be the hot-spot */
 
 #ifdef SAFE_C11
     r = sscanf_s(xpm[0], "%d %d %d %d", &w, &h, &nc, &cp);
@@ -3026,6 +3734,10 @@ Bitmap *bm_from_Xpm(char *xpm[]) {
     if(!b)
         return NULL;
 
+#ifdef SAFE_C11
+    memset(colors, 0, sizeof colors);
+#endif
+
     for(i = 0; i < nc; i++) {
         char col[20];
         char k;
@@ -3039,14 +3751,31 @@ Bitmap *bm_from_Xpm(char *xpm[]) {
         assert(r == 2);(void)r;
         assert(k == 'c'); /* other keys not supported */
         assert(col[sizeof col - 1] == 0);
-        colors[i] = bm_atoi(col);
 
-#ifdef XPM_TRANS_COLOR
-        for(j=0;col[j];j++){col[j]=tolower(col[j]);}
-        if(!strcmp(col,"none")){colors[i]=XPM_TRANS_COLOR;}
-#endif
+        /* TODO: If col starts with % it is a HSV value */
+
+        if(!bm_stricmp(col,"none"))
+            tci = i;
+        else
+            colors[i] = bm_atoi(col);
     }
 
+    /* Set `tc` to a color that is not in the palette. */
+    int found = 0;
+    do {
+        tc++;
+        found = 0;
+        for(j = 0; j < nc; j++)
+            if(colors[j] == tc) {
+                found = 1;
+                break;
+            }
+    } while(found);
+
+    if(tci < XPM_MAX_COLORS)
+        colors[tci] = tc;
+
+    /* Get the actual pixel data */
     for(j = 0; j < h; j++) {
         char *row = xpm[1 + nc + j];
         for(i = 0; i < w; i++) {
@@ -3060,25 +3789,19 @@ Bitmap *bm_from_Xpm(char *xpm[]) {
             bm_putpixel(b, i, j);
         }
     }
-#ifdef XPM_TRANS_COLOR
-    bm_set_color(b, XPM_TRANS_COLOR);
-#else
-    bm_set_color(b,1);/* arb color for transparency when saving to GIF */
-#endif
+
+    /* Now set the color of the bitmap to `tc` to preserve its transparency */
+    bm_set_color(b, tc);
+
     return b;
 }
 
 void bm_clip(Bitmap *b, int x0, int y0, int x1, int y1) {
-    if(x0 > x1) {
-        int t = x1;
-        x1 = x0;
-        x0 = t;
-    }
-    if(y0 > y1) {
-        int t = y1;
-        y1 = y0;
-        y0 = t;
-    }
+    assert(b);
+    if(x0 > x1)
+        SWAPINT(x0, x1);
+    if(y0 > y1)
+        SWAPINT(y0, y1);
     if(x0 < 0) x0 = 0;
     if(x1 > b->w) x1 = b->w;
     if(y0 < 0) y0 = 0;
@@ -3091,10 +3814,30 @@ void bm_clip(Bitmap *b, int x0, int y0, int x1, int y1) {
 }
 
 void bm_unclip(Bitmap *b) {
+    assert(b);
     b->clip.x0 = 0;
     b->clip.y0 = 0;
     b->clip.x1 = b->w;
     b->clip.y1 = b->h;
+}
+
+
+BmRect bm_get_clip(Bitmap *b) {
+    assert(b);
+    return b->clip;
+}
+
+void bm_set_clip(Bitmap *b, const BmRect rect) {
+    assert(b);
+    b->clip = rect;
+}
+
+int bm_inclip(Bitmap *b, int x, int y) {
+    assert(b);
+    assert(b->clip.x1 > b->clip.x0 && b->clip.x0 >= 0 && b->clip.x1 < b->w);
+    assert(b->clip.y1 > b->clip.y0 && b->clip.y0 >= 0 && b->clip.y1 < b->h);
+    return x >= b->clip.x0 && y >= b->clip.y0 &&
+        x < b->clip.x1 && y < b->clip.y1;
 }
 
 void bm_blit(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, int w, int h) {
@@ -3169,6 +3912,8 @@ void bm_blit(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, int w, in
         h -= delta;
     }
 
+    assert(dst->clip.x1 <= dst->w);
+    assert(dst->clip.y1 <= dst->h);
     assert(dx >= 0 && dx + w <= dst->clip.x1);
     assert(dy >= 0 && dy + h <= dst->clip.y1);
     assert(sx >= 0 && sx + w <= src->w);
@@ -3258,6 +4003,8 @@ void bm_maskedblit(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, int
         h -= delta;
     }
 
+    assert(dst->clip.x1 <= dst->w);
+    assert(dst->clip.y1 <= dst->h);
     assert(dx >= 0 && dx + w <= dst->clip.x1);
     assert(dy >= 0 && dy + h <= dst->clip.y1);
     assert(sx >= 0 && sx + w <= src->w);
@@ -3268,7 +4015,7 @@ void bm_maskedblit(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, int
         i = sx;
         for(x = dx; x < dx + w; x++) {
 #if IGNORE_ALPHA
-            int c = BM_GET(src, i, j) & 0x00FFFFFF;
+            unsigned int c = BM_GET(src, i, j) & 0x00FFFFFF;
             if(c != (src->color & 0x00FFFFFF))
                 BM_SET(dst, x, y, c);
 #else
@@ -3315,31 +4062,19 @@ void bm_blit_ex(Bitmap *dst, int dx, int dy, int dw, int dh, Bitmap *src, int sx
         return;
 
     /* Clip on the Y */
-    y = dy;
-    while(y < dst->clip.y0 || sy < 0) {
-        ynum += sh;
-        while(ynum > dh) {
+    for(y = dy; y < dst->clip.y0 || sy < 0; y++) {
+        for(ynum += sh; ynum > dh; sy++)
             ynum -= dh;
-            sy++;
-        }
-        y++;
     }
 
     if(dy >= dst->clip.y1 || dy + dh < dst->clip.y0)
         return;
 
     /* Clip on the X */
-    x = dx;
-    while(x < dst->clip.x0 || sx < 0) {
-        xnum += sw;
-        while(xnum > dw) {
+    for(x = dx; x < dst->clip.x0 || sx < 0; x++, dw--) {
+        for(xnum += sw; xnum > dw; sx++, sw--)
             xnum -= dw;
-            sx++;
-            sw--;
-        }
-        x++;
     }
-    dw -= (x - dx);
     dx = x;
 
     if(dx >= dst->clip.x1 || dx + dw < dst->clip.x0)
@@ -3354,7 +4089,7 @@ void bm_blit_ex(Bitmap *dst, int dx, int dy, int dw, int dh, Bitmap *src, int sx
 
         assert(y >= dst->clip.y0 && sy >= 0);
         for(x = dx; x < dx + dw; x++) {
-            int c;
+            unsigned int c;
             if(sx >= src->w || x >= dst->clip.x1)
                 break;
             assert(x >= dst->clip.x0 && sx >= 0);
@@ -3382,43 +4117,35 @@ void bm_blit_ex(Bitmap *dst, int dx, int dy, int dw, int dh, Bitmap *src, int sx
 
 /*
 Works the same as bm_blit_ex(), but calls the callback for each pixel
-typedef int (*bm_blit_fun)(Bitmap *dst, int dx, int dy, int sx, int sy, void *data);
+typedef unsigned int (*bm_sampler_function)(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, unsigned int dest_color);
 */
-void bm_blit_ex_fun(Bitmap *dst, int dx, int dy, int dw, int dh, Bitmap *src, int sx, int sy, int sw, int sh, bm_blit_fun fun, void *data){
+void bm_blit_callback(Bitmap *dst, int dx, int dy, int dw, int dh, Bitmap *src, int sx, int sy, int sw, int sh, bm_sampler_function sampler) {
     int x, y, ssx;
     int ynum = 0;
     int xnum = 0;
-    unsigned int maskc = bm_get_color(src) & 0xFFFFFF;
+    BmRect save_clip;
 
-    if(!fun || sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0)
+    assert(src && dst);
+    if(sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0)
         return;
 
+    save_clip = bm_get_clip(src);
+    bm_clip(src, sx, sy, sx + sw, sy + sh);
+
     /* Clip on the Y */
-    y = dy;
-    while(y < dst->clip.y0 || sy < 0) {
-        ynum += sh;
-        while(ynum > dh) {
+    for(y = dy; y < dst->clip.y0 || sy < 0; y++) {
+        for(ynum += sh; ynum > dh; sy++)
             ynum -= dh;
-            sy++;
-        }
-        y++;
     }
 
     if(dy >= dst->clip.y1 || dy + dh < dst->clip.y0)
         return;
 
     /* Clip on the X */
-    x = dx;
-    while(x < dst->clip.x0 || sx < 0) {
-        xnum += sw;
-        while(xnum > dw) {
+    for(x = dx; x < dst->clip.x0 || sx < 0; x++, dw--) {
+        for(xnum += sw; xnum > dw; sx++, sw--)
             xnum -= dw;
-            sx++;
-            sw--;
-        }
-        x++;
     }
-    dw -= (x - dx);
     dx = x;
 
     if(dx >= dst->clip.x1 || dx + dw < dst->clip.x0)
@@ -3433,10 +4160,15 @@ void bm_blit_ex_fun(Bitmap *dst, int dx, int dy, int dw, int dh, Bitmap *src, in
 
         assert(y >= dst->clip.y0 && sy >= 0);
         for(x = dx; x < dx + dw; x++) {
+            unsigned int c;
             if(sx >= src->w || x >= dst->clip.x1)
                 break;
-            if(!fun(dst, x, y, src, sx, sy, maskc, data))
-                return;
+            assert(x >= dst->clip.x0 && sx >= 0);
+
+            c = BM_GET(dst, x, y);
+            c = sampler(dst, x, y, src, sx, sy, c);
+            BM_SET(dst, x, y, c);
+
             xnum += sw;
             while(xnum > dw) {
                 xnum -= dw;
@@ -3449,6 +4181,88 @@ void bm_blit_ex_fun(Bitmap *dst, int dx, int dy, int dw, int dh, Bitmap *src, in
             sy++;
         }
     }
+
+    bm_set_clip(src, save_clip);
+}
+
+unsigned int bm_smp_outline(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, unsigned int dest_color) {
+    (void)dx;(void)dy;
+    if(bm_colcmp(src->color, bm_get(src, sx, sy))) {
+        if(sx > src->clip.x0) {
+            if(!bm_colcmp(src->color, bm_get(src, sx-1, sy)))
+                return dst->color;
+        }
+        if(sx < src->clip.x1-1) {
+            if(!bm_colcmp(src->color, bm_get(src, sx+1, sy)))
+                return dst->color;
+        }
+        if(sy > src->clip.y0) {
+            if(!bm_colcmp(src->color, bm_get(src, sx, sy-1)))
+                return dst->color;
+        }
+        if(sy < src->clip.y1-1) {
+            if(!bm_colcmp(src->color, bm_get(src, sx, sy+1)))
+                return dst->color;
+        }
+    } else {
+        if(sx == src->clip.x0 || sx == src->clip.x1 - 1)
+            return dst->color;
+        if(sy == src->clip.y0 || sy == src->clip.y1 - 1)
+            return dst->color;
+    }
+    return dest_color;
+}
+
+unsigned int bm_smp_border(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, unsigned int dest_color) {
+    (void)dx;(void)dy;
+    if(!bm_colcmp(src->color, bm_get(src, sx, sy))) {
+
+        if(sx > src->clip.x0) {
+            if(bm_colcmp(src->color, bm_get(src, sx-1, sy)))
+                return dst->color;
+        } else
+            return dst->color;
+
+        if(sx < src->clip.x1-1) {
+            if(bm_colcmp(src->color, bm_get(src, sx+1, sy)))
+                return dst->color;
+        } else
+            return dst->color;
+
+        if(sy > src->clip.y0) {
+            if(bm_colcmp(src->color, bm_get(src, sx, sy-1)))
+                return dst->color;
+        } else
+            return dst->color;
+
+        if(sy < src->clip.y1-1) {
+            if(bm_colcmp(src->color, bm_get(src, sx, sy+1)))
+                return dst->color;
+        } else
+            return dst->color;
+    }
+
+    return dest_color;
+}
+
+unsigned int bm_smp_binary(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, unsigned int dest_color) {
+    (void)dx;(void)dy;
+    if(!bm_colcmp(src->color, bm_get(src, sx, sy))) {
+        return dst->color;
+    }
+    return dest_color;
+}
+
+unsigned int bm_smp_blend50(Bitmap *dst, int dx, int dy, Bitmap *src, int sx, int sy, unsigned int dest_color) {
+    (void)dst;(void)dx;(void)dy;
+    unsigned int c = bm_get(src, sx, sy);
+    if(bm_colcmp(src->color, c))
+        return dest_color;
+
+    dest_color = (dest_color >> 1) & 0x7F7F7F;
+    c = (c >> 1) & 0x7F7F7F;
+
+    return dest_color + c;
 }
 
 void bm_rotate_blit(Bitmap *dst, int ox, int oy, Bitmap *src, int px, int py, double angle, double scale) {
@@ -3481,22 +4295,22 @@ void bm_rotate_blit(Bitmap *dst, int ox, int oy, Bitmap *src, int px, int py, do
     if(dy < miny) miny = (int)dy;
     if(dy > maxy) maxy = (int)dy;
 
-    dx = cosAngle * (src->w - px) * scale + sinAngle * py * scale + ox;
-    dy = sinAngle * (src->w - px) * scale - cosAngle * py * scale + oy;
+    dx = cosAngle * ((double)src->w - px) * scale + sinAngle * py * scale + ox;
+    dy = sinAngle * ((double)src->w - px) * scale - cosAngle * py * scale + oy;
     if(dx < minx) minx = (int)dx;
     if(dx > maxx) maxx = (int)dx;
     if(dy < miny) miny = (int)dy;
     if(dy > maxy) maxy = (int)dy;
 
-    dx = cosAngle * (src->w - px) * scale - sinAngle * (src->h - py) * scale + ox;
-    dy = sinAngle * (src->w - px) * scale + cosAngle * (src->h - py) * scale + oy;
+    dx = cosAngle * ((double)src->w - px) * scale - sinAngle * ((double)src->h - py) * scale + ox;
+    dy = sinAngle * ((double)src->w - px) * scale + cosAngle * ((double)src->h - py) * scale + oy;
     if(dx < minx) minx = (int)dx;
     if(dx > maxx) maxx = (int)dx;
     if(dy < miny) miny = (int)dy;
     if(dy > maxy) maxy = (int)dy;
 
-    dx = -cosAngle * px * scale - sinAngle * (src->h - py) * scale + ox;
-    dy = -sinAngle * px * scale + cosAngle * (src->h - py) * scale + oy;
+    dx = -cosAngle * px * scale - sinAngle * ((double)src->h - py) * scale + ox;
+    dy = -sinAngle * px * scale + cosAngle * ((double)src->h - py) * scale + oy;
     if(dx < minx) minx = (int)dx;
     if(dx > maxx) maxx = (int)dx;
     if(dy < miny) miny = (int)dy;
@@ -3540,12 +4354,156 @@ void bm_rotate_blit(Bitmap *dst, int ox, int oy, Bitmap *src, int px, int py, do
     }
 }
 
+/* I based bm_stretch() on this implementation.
+ * http://www.codeproject.com/Articles/36145/Free-Image-Transformation
+ *
+ * See also
+ *  - https://math.stackexchange.com/a/104595
+ *  - http://www.reedbeta.com/blog/quadrilateral-interpolation-part-1/
+ *  - https://www.codeproject.com/Articles/247214/Quadrilateral-Distortion
+ *  - http://www.vbforums.com/showthread.php?700187-Code-for-a-four-point-transformation-of-an-image
+ */
+static BmPoint vec2_sub(BmPoint v1, BmPoint v2) {
+    BmPoint v = {v1.x - v2.x, v1.y - v2.y};
+    return v;
+}
+static int vec2_cross(BmPoint v1, BmPoint v2) {
+    // Fun fact about "2D cross product" https://stackoverflow.com/a/243984/115589
+    return v1.x * v2.y - v1.y * v2.x;
+}
+
+static BmPoint vec2_interp(BmPoint P, BmPoint D, double t) {
+    BmPoint v = {(int)(P.x + t * D.x), (int)(P.y + t * D.y)};
+    return v;
+}
+
+void bm_stretch(Bitmap *dst, Bitmap *src, BmPoint P[4]) {
+    int i;
+    int minx = P[0].x, maxx = P[0].x;
+    int miny = P[0].y, maxy = P[0].y;
+    for(i = 1; i < 4; i++)
+    {
+        if(P[i].x < minx) minx = P[i].x;
+        if(P[i].x > maxx) maxx = P[i].x;
+        if(P[i].y < miny) miny = P[i].y;
+        if(P[i].y > maxy) maxy = P[i].y;
+    }
+
+    BmPoint AB = vec2_sub(P[1], P[0]);
+    BmPoint BC = vec2_sub(P[2], P[1]);
+    BmPoint CD = vec2_sub(P[3], P[2]);
+    BmPoint DA = vec2_sub(P[0], P[3]);
+
+    if(minx < dst->clip.x0)
+        minx = dst->clip.x0;
+    if(maxx > dst->clip.x1)
+        maxx = dst->clip.x1;
+    if(miny < dst->clip.y0)
+        miny = dst->clip.y0;
+    if(maxy > dst->clip.y1)
+        maxy = dst->clip.y1;
+
+    BmPoint q;
+    for(q.y = miny; q.y < maxy; q.y++) {
+        for(q.x = minx; q.x < maxx; q.x++) {
+
+            double nab = vec2_cross(vec2_sub(q, P[0]), AB);
+            double nbc = vec2_cross(vec2_sub(q, P[1]), BC);
+            double ncd = vec2_cross(vec2_sub(q, P[2]), CD);
+            double nda = vec2_cross(vec2_sub(q, P[3]), DA);
+
+            if(nab <= 0 && nbc <= 0 && ncd <= 0 && nda <= 0) {
+                int u = (int)((src->clip.x1 - 1 - src->clip.x0) * (nda / (nda + nbc)) + src->clip.x0);
+                int v = (int)((src->clip.y1 - 1 - src->clip.y0) * (nab / (nab + ncd)) + src->clip.y0);
+
+                if(u >= 0 && u < src->w && v >= 0 && v < src->h) {
+                    unsigned int c = BM_GET(src, u, v);
+                    BM_SET(dst, q.x, q.y, c);
+                }
+            }
+        }
+    }
+}
+
+void bm_destretch(Bitmap *dst, Bitmap *src, BmPoint P[4]) {
+    int x, y, w, h;
+
+    w = dst->clip.x1 - dst->clip.x0;
+    h = dst->clip.y1 - dst->clip.y0;
+
+    BmPoint AB = vec2_sub(P[1],P[0]);
+    BmPoint DC = vec2_sub(P[2],P[3]);
+
+    double ty = 0.0, dty = 1.0 / h;
+    double tx = 0.0, dtx = 1.0 / w;
+
+    for(y = dst->clip.y0; y < dst->clip.y1; y++, ty += dty) {
+        for(tx = 0.0, x = dst->clip.x0; x < dst->clip.x1; x++, tx += dtx) {
+            BmPoint x0 = vec2_interp(P[0], AB, tx);
+            BmPoint x1 = vec2_interp(P[3], DC, tx);
+
+            BmPoint uv = vec2_interp(x0, vec2_sub(x1, x0), ty);
+
+            if(uv.x < src->clip.x0 || uv.x >= src->clip.x1 || uv.y < src->clip.y0 || uv.y >= src->clip.y1)
+                continue;
+
+            unsigned int c = BM_GET(src, uv.x, uv.y);
+            BM_SET(dst,x,y,c);
+        }
+    }
+}
+
+void bm_blit_xbm(Bitmap *dst, int dx, int dy, int sx, int sy, int w, int h, int xbm_w, int xbm_h, unsigned char xbm_data[]) {
+  int i,j;
+  unsigned int c = bm_get_color(dst);
+
+  assert(sx >= 0 && sx + w <= xbm_w);
+  assert(sy >= 0 && sy + h <= xbm_h);
+  (void)xbm_h;
+
+  int delta = dst->clip.x0 - dx;
+  if(delta > 0) {
+    dx = dst->clip.x0;
+    sx += delta;
+    w -= delta;
+  }
+  if((dx + w) > dst->clip.x1) {
+    w = dst->clip.x1 - dx;
+  }
+  delta = dst->clip.y0 - dy;
+  if(delta > 0) {
+    dy = dst->clip.y0;
+    sy += delta;
+    h -= delta;
+  }
+  if((dy + h) > dst->clip.y1) {
+    h = dst->clip.y1 - dy;
+  }
+
+  for(j = 0; j < h; j++) {
+    int pix = (sy + j) * xbm_w + sx;
+    for(i = 0; i < w; i++, pix++) {
+      int byte = pix >> 3;
+      int shift = pix & 0x07;
+      if(!(xbm_data[byte] & (1 << shift)))
+        bm_set(dst, dx + i, dy + j, c);
+    }
+  }
+
+}
+
+unsigned int bm_graypixel(unsigned int c) {
+    unsigned char R,G,B;
+    bm_get_rgb(c, &R, &G, &B);
+    return (2126 * R + 7152 * G + 722 * B)/10000;
+}
+
 void bm_grayscale(Bitmap *b) {
     /* https://en.wikipedia.org/wiki/Grayscale */
     int x, y;
     for(y = 0; y < b->h; y++)
         for(x = 0; x < b->w; x++) {
-            unsigned int c =  BM_GET(b, x, y);
+            unsigned int c = BM_GET(b, x, y);
             unsigned char R,G,B;
             bm_get_rgb(c, &R, &G, &B);
             c = (2126 * R + 7152 * G + 722 * B)/10000;
@@ -4176,6 +5134,11 @@ unsigned int bm_rgb(unsigned char R, unsigned char G, unsigned char B) {
     return 0xFF000000 | ((B) << 16) | ((G) << 8) | (R);
 #endif
 }
+
+int bm_colcmp(unsigned int c1, unsigned int c2) {
+    return (c1 & 0xFFFFFF) == (c2 & 0xFFFFFF);
+}
+
 unsigned int bm_rgba(unsigned char R, unsigned char G, unsigned char B, unsigned char A) {
 #if !ABGR
     return ((A) << 24) | ((R) << 16) | ((G) << 8) | (B);
@@ -4256,7 +5219,7 @@ void bm_get_hsl(unsigned int col, double *H, double *S, double *L) {
     if(C == 0) {
         *H = 0;
     } else if (M == R) {
-        *H = fmod((double)(G - B)/C, 6);
+        *H = fmod(((double)G - (double)B)/(double)C, 6);
     } else if (M == G) {
         *H = (double)(B - R)/C + 2.0;
     } else if (M == B) {
@@ -4264,7 +5227,7 @@ void bm_get_hsl(unsigned int col, double *H, double *S, double *L) {
     }
     *H = fmod(*H * 60.0, 360);
     if(*H < 0) *H = 360.0 + *H;
-    *L = 0.5 * (M + m) / 255.0;
+    *L = 0.5 * ((double)M + (double)m) / 255.0;
     if(C == 0) {
         *S = 0;
     } else {
@@ -4286,15 +5249,17 @@ unsigned int bm_byte_order(unsigned int col) {
 #endif
 }
 
-unsigned int bm_get_color(Bitmap *bm) {
-    return bm->color;
+unsigned int bm_get_color(Bitmap *b) {
+    assert(b);
+    return b->color;
 }
 
-unsigned int bm_picker(Bitmap *bm, int x, int y) {
-    if(x < 0 || x >= bm->w || y < 0 || y >= bm->h)
+unsigned int bm_picker(Bitmap *b, int x, int y) {
+    assert(b);
+    if(x < 0 || x >= b->w || y < 0 || y >= b->h)
         return 0;
-    bm->color = bm_get(bm, x, y);
-    return bm->color;
+    b->color = bm_get(b, x, y);
+    return b->color;
 }
 
 unsigned int bm_lerp(unsigned int color1, unsigned int color2, double t) {
@@ -4308,23 +5273,36 @@ unsigned int bm_lerp(unsigned int color1, unsigned int color2, double t) {
     r1 = (color1 >> 16) & 0xFF; g1 = (color1 >> 8) & 0xFF; b1 = (color1 >> 0) & 0xFF;
     r2 = (color2 >> 16) & 0xFF; g2 = (color2 >> 8) & 0xFF; b2 = (color2 >> 0) & 0xFF;
 
-    r3 = (int)((r2 - r1) * t + r1);
-    g3 = (int)((g2 - g1) * t + g1);
-    b3 = (int)((b2 - b1) * t + b1);
+    r3 = (int)(r1 + t * ((double)r2 - r1));
+    g3 = (int)(g1 + t * ((double)g2 - g1));
+    b3 = (int)(b1 + t * ((double)b2 - b1));
 
     return (r3 << 16) | (g3 << 8) | (b3 << 0);
 }
 
 int bm_width(Bitmap *b) {
+    assert(b);
     return b->w;
 }
 
 int bm_height(Bitmap *b) {
+    assert(b);
     return b->h;
+}
+
+unsigned char *bm_raw_data(Bitmap *b) {
+    assert(b);
+    return b->data;
+}
+
+int bm_pixel_count(Bitmap *b) {
+    assert(b);
+    return b->w * b->h;
 }
 
 void bm_clear(Bitmap *b) {
     int i, j;
+    assert(b);
     for(j = 0; j < b->h; j++)
         for(i = 0; i < b->w; i++) {
             BM_SET(b, i, j, b->color);
@@ -4332,6 +5310,7 @@ void bm_clear(Bitmap *b) {
 }
 
 void bm_putpixel(Bitmap *b, int x, int y) {
+    assert(b);
     if(x < b->clip.x0 || x >= b->clip.x1 || y < b->clip.y0 || y >= b->clip.y1)
         return;
     BM_SET(b, x, y, b->color);
@@ -4343,6 +5322,7 @@ void bm_line(Bitmap *b, int x0, int y0, int x1, int y1) {
     int sx, sy;
     int err, e2;
 
+    assert(b);
     if(dx < 0) dx = -dx;
     if(dy < 0) dy = -dy;
 
@@ -4377,7 +5357,154 @@ void bm_line(Bitmap *b, int x0, int y0, int x1, int y1) {
     }
 }
 
+/*
+Xiaolin Wu's line algorithm.
+This code is pretty much based on the [Wikipedia](https://en.wikipedia.org/wiki/Xiaolin_Wu%27s_line_algorithm)
+version, though I did read Michael Abrash's article in the June 1992 issue of Dr Dobbs'.
+See also <https://www.geeksforgeeks.org/anti-aliased-line-xiaolin-wus-algorithm/>, though their
+implementation looks like a straight C port of the Wikipedia code
+*/
+void bm_line_aa(Bitmap *b, int x0, int y0, int x1, int y1) {
+#define FPART(x) ((x) - (int)(x))
+    int x, y, dx, dy;
+    unsigned int c0, c1 = bm_get_color(b);
+    double gradient, intery;
+
+    int steep = abs(y1 - y0) > abs(x1 - x0);
+    if(steep) {
+        SWAPINT(x0, y0);
+        SWAPINT(x1, y1);
+    }
+    if(x0 > x1) {
+        SWAPINT(x0, x1);
+        SWAPINT(y0, y1);
+    }
+
+    dx = x1 - x0;
+    dy = y1 - y0;
+
+    /* Clipping */
+    if(steep) {
+        if(x0 >= b->clip.y1 || x1 < b->clip.y0)
+            return;
+        if(y0 < y1) {
+            if(y0 >= b->clip.x1 || y1 < b->clip.x0)
+                return;
+        } else {
+            if(y1 >= b->clip.x1 || y0 < b->clip.x0)
+                return;
+        }
+    } else {
+        if(x0 >= b->clip.x1 || x1 < b->clip.x0)
+            return;
+        if(y0 < y1) {
+            if(y0 >= b->clip.y1 || y1 < b->clip.y0)
+                return;
+        } else {
+            if(y1 >= b->clip.y1 || y0 < b->clip.y0)
+                return;
+        }
+    }
+
+    /* Special cases */
+    if(dy == 0) {
+
+        if(steep) {
+            if(y0 < b->clip.x0 || y0 >= b->clip.x1)
+                return;
+            for(x = x0; x <= x1; x++) {
+                if(x < b->clip.y0)
+                    continue;
+                else if(x >= b->clip.y1)
+                    break;
+                bm_set(b, y0, x, c1);
+            }
+        } else {
+            if(y0 < b->clip.y0 || y0 >= b->clip.y1)
+                return;
+            for(x = x0; x <= x1; x++) {
+                if(x < b->clip.x0)
+                    continue;
+                else if(x >= b->clip.x1)
+                    break;
+                bm_set(b, x, y0, c1);
+            }
+        }
+
+        return;
+    /* } else if(dx == 0) { -- doesn't matter because of the earlier X/Y swap */
+    } else if(dx == dy) {
+        dy = y0 < y1 ? 1 : -1;
+        for(x = x0, y = y0; x <= x1; x++, y += dy) {
+            if(x < b->clip.x0)
+                continue;
+            else if(x >= b->clip.x1)
+                break;
+            if(y < b->clip.y0 || y >= b->clip.y1)
+                continue;
+
+            bm_set(b, x, y, c1);
+        }
+        return;
+    }
+
+    /* I omit the Wikipedia's part about the endpoints
+    because x0,y0 and x1,y1 are integers.
+    TODO: Perhaps they should not be integers.
+    */
+
+    gradient = (double)dy / dx;
+    intery = y0;
+
+    if(steep) {
+        for(x = x0; x <= x1; x++, intery += gradient) {
+
+            if(x < b->clip.y0)
+                continue;
+            else if(x >= b->clip.y1)
+                break;
+
+            y = (int)intery;
+
+            if(y < b->clip.x0 || y >= b->clip.x1)
+                continue;
+
+            c0 = bm_get(b, y, x);
+            bm_set(b, y, x, bm_lerp(c0, c1, 1.0 - FPART(intery)));
+
+            y++;
+
+            if(y < b->clip.x0 || y >= b->clip.x1)
+                continue;
+
+            c0 = bm_get(b, y, x);
+            bm_set(b, y, x, bm_lerp(c0, c1, FPART(intery)));
+        }
+    } else {
+        for(x = x0; x <= x1; x++, intery += gradient) {
+
+            if(x < b->clip.x0)
+                continue;
+            else if(x >= b->clip.x1)
+                break;
+
+            y = (int)intery;
+            if(y < b->clip.y0 || y >= b->clip.y1)
+                continue;
+            c0 = bm_get(b, x, y);
+            bm_set(b, x, y, bm_lerp(c0, c1, 1.0 - FPART(intery)));
+
+            y++;
+            if(y < b->clip.y0 || y >= b->clip.y1)
+                continue;
+            c0 = bm_get(b, x, y);
+            bm_set(b, x, y, bm_lerp(c0, c1, FPART(intery)));
+        }
+    }
+}
+
 void bm_rect(Bitmap *b, int x0, int y0, int x1, int y1) {
+    assert(b);
     bm_line(b, x0, y0, x1, y0);
     bm_line(b, x1, y0, x1, y1);
     bm_line(b, x1, y1, x0, y1);
@@ -4386,6 +5513,7 @@ void bm_rect(Bitmap *b, int x0, int y0, int x1, int y1) {
 
 void bm_fillrect(Bitmap *b, int x0, int y0, int x1, int y1) {
     int x,y;
+    assert(b);
     if(x1 < x0) {
         x = x0;
         x0 = x1;
@@ -4406,6 +5534,7 @@ void bm_fillrect(Bitmap *b, int x0, int y0, int x1, int y1) {
 
 void bm_dithrect(Bitmap *b, int x0, int y0, int x1, int y1) {
     int x,y;
+    assert(b);
     if(x1 < x0) {
         x = x0;
         x0 = x1;
@@ -4429,6 +5558,7 @@ void bm_circle(Bitmap *b, int x0, int y0, int r) {
     int x = -r;
     int y = 0;
     int err = 2 - 2 * r;
+    assert(b);
     do {
         int xp, yp;
 
@@ -4468,6 +5598,7 @@ void bm_fillcircle(Bitmap *b, int x0, int y0, int r) {
     int x = -r;
     int y = 0;
     int err = 2 - 2 * r;
+    assert(b);
     do {
         int i;
         for(i = x0 + x; i <= x0 - x; i++) {
@@ -4498,6 +5629,7 @@ void bm_ellipse(Bitmap *b, int x0, int y0, int x1, int y1) {
         dy = 4*(b1 + 1) * a * a;
     long err = dx + dy + b1*a*a, e2;
 
+    assert(b);
     if(x0 > x1) { x0 = x1; x1 += a; }
     if(y0 > y1) { y0 = y1; }
     y0 += (b0+1)/2;
@@ -4544,12 +5676,91 @@ void bm_ellipse(Bitmap *b, int x0, int y0, int x1, int y1) {
     }
 }
 
+void bm_fillellipse(Bitmap *b, int x0, int y0, int x1, int y1) {
+    int a = abs(x1-x0), b0 = abs(y1-y0), b1 = b0 & 1;
+    long dx = 4 * (1 - a) * b0 * b0,
+        dy = 4*(b1 + 1) * a * a;
+    long err = dx + dy + b1*a*a, e2;
+
+    int xs, xe, x;
+
+    assert(b);
+    if(x0 > x1) { x0 = x1; x1 += a; }
+    if(y0 > y1) { y0 = y1; }
+    y0 += (b0+1)/2;
+    y1 = y0 - b1;
+    a *= 8*a;
+    b1 = 8 * b0 * b0;
+
+    do {
+
+        if(y0 >= b->clip.y0 && y0 < b->clip.y1) {
+            xs = x0;
+            xe = x1;
+            if(xs < b->clip.x0)
+                xs = b->clip.x0;
+            if(xe >= b->clip.x1)
+                xe = b->clip.x1 - 1;
+            for(x = xs; x <= xe; x++)
+                BM_SET(b, x, y0, b->color);
+        }
+
+        if(y1 >= b->clip.y0 && y1 < b->clip.y1) {
+            xs = x0;
+            xe = x1;
+            if(xs < b->clip.x0)
+                xs = b->clip.x0;
+            if(xe >= b->clip.x1)
+                xe = b->clip.x1 - 1;
+            for(x = xs; x <= xe; x++)
+                BM_SET(b, x, y1, b->color);
+        }
+
+        e2 = 2 * err;
+        if(e2 <= dy) {
+            y0++; y1--; err += dy += a;
+        }
+        if(e2 >= dx || 2*err > dy) {
+            x0++; x1--; err += dx += b1;
+        }
+    } while(x0 <= x1);
+
+    while(y0 - y1 < b0) {
+        /* When is this part used again? */
+
+        if(y0 >= b->clip.y0 && y0 < b->clip.y1) {
+            xs = x0 - 1;
+            xe = x1 + 1;
+            if(xs < b->clip.x0)
+                xs = b->clip.x0;
+            if(xe >= b->clip.x1)
+                xe = b->clip.x1 - 1;
+            for(x = xs; x <= xe; x++)
+                BM_SET(b, x, y0, b->color);
+        }
+        y0++;
+
+        if(y1 >= b->clip.y0 && y1 < b->clip.y1) {
+            xs = x0 - 1;
+            xe = x1 + 1;
+            if(xs < b->clip.x0)
+                xs = b->clip.x0;
+            if(xe >= b->clip.x1)
+                xe = b->clip.x1 - 1;
+            for(x = xs; x <= xe; x++)
+                BM_SET(b, x, y1, b->color);
+        }
+        y1--;
+    }
+}
+
 void bm_roundrect(Bitmap *b, int x0, int y0, int x1, int y1, int r) {
     int x = -r;
     int y = 0;
     int err = 2 - 2 * r;
     int rad = r;
 
+    assert(b);
     bm_line(b, x0 + r, y0, x1 - r, y0);
     bm_line(b, x0, y0 + r, x0, y1 - r);
     bm_line(b, x0 + r, y1, x1 - r, y1);
@@ -4595,6 +5806,7 @@ void bm_fillroundrect(Bitmap *b, int x0, int y0, int x1, int y1, int r) {
     int y = 0;
     int err = 2 - 2 * r;
     int rad = r;
+    assert(b);
     do {
         int xp, xq, yp, i;
 
@@ -4628,46 +5840,104 @@ void bm_fillroundrect(Bitmap *b, int x0, int y0, int x1, int y1, int r) {
     }
 }
 
-/* Bezier curve with 3 control points.
- * See http://devmag.org.za/2011/04/05/bzier-curves-a-tutorial/
- * I tried the more optimized version at
- * http://members.chello.at/~easyfilter/bresenham.html
- * but that one had some caveats.
+/* The problem with drawing bezier functions is finding a suitable value for
+ * incrementing the `t` parameter with. My implementation takes a guess from
+ * the distance between the control points, and adjusts the guess if new pixels
+ * on the curve are too close or too far from the last pixel drawn. It seemed
+ * to work pretty well for my test cases.
+ *
+ * [bez][] describes an alternative that subdivides the curve with different
+ * values of `t` until a certain quality threshold is met and then draws lines
+ * between those points.
+ *
+ * [bez]: http://devmag.org.za/2011/04/05/bzier-curves-a-tutorial/
  */
 void bm_bezier3(Bitmap *b, int x0, int y0, int x1, int y1, int x2, int y2) {
-    int lx = x0, ly = y0, steps;
+    // Quadratic Bezier curve
+    int x, y, lx = x0, ly = y0;
 
-    /* Compute how far the point x1,y1 deviates from the line from x0,y0 to x2,y2.
-     * I make the number of steps proportional to that deviation, but it is not
-     * a perfect system.
-     */
-    double dx = x2 - x0, dy = y2 - y0;
-    if(dx == 0 && dy == 0) {
-      steps = 2;
-    } else {
-      /* https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line */
-      double denom = sqrt(dx * dx + dy * dy);
-      double dist = fabs((double)((y2 - y0) * x1 - (x2 - x0) * y1 + x2 * y0 + y2 * x0))/denom;
-      steps = (int)sqrt(dist);
-      if(steps == 0) steps = 1;
-    }
+    assert(b);
 
-    double inc = 1.0/steps;
-    double t = inc;
+    bm_putpixel(b, x0, y0);
 
+    // Take a guess as to how many pixels need to be drawn
+    // using the Manhattan distance between the control points
+    int steps = abs(x1 - x0) + abs(y1 - y0) + abs(x2 - x1) + abs(y2 - y1) + abs(x2 - x1) + abs(y2 - y1);
+    if(steps == 0)
+        return;
+    double  t = 0, inc = 1.0/steps;
     do {
-        dx = (1-t)*(1-t)*x0 + 2*(1-t)*t*x1 + t*t*x2;
-        dy = (1-t)*(1-t)*y0 + 2*(1-t)*t*y1 + t*t*y2;
-        bm_line(b, lx, ly, (int)dx, (int)dy);
-        lx = (int)dx;
-        ly = (int)dy;
-        t += inc;
+        double dt = t + inc, nt = 1.0 - dt;
+        double dbx = nt*nt*x0 + 2.0*nt*dt*x1 + dt*dt*x2 + 0.5;
+        double dby = nt*nt*y0 + 2.0*nt*dt*y1 + dt*dt*y2 + 0.5;
+        x = (int)dbx, y = (int)dby;
+
+        int dx = abs(x - lx), dy = abs(y - ly);
+
+        if(dx > 1 || dy > 1) {
+            // the new point is too far from the last point, so
+            // decrease `inc` and try again.
+            inc *= 0.75;
+        } else if(dx == 0 && dy == 0) {
+            // The new pixel is on top of the last pixel, so
+            // increase `inc` and try again.
+            inc *= 1.5;
+        } else {
+            if(x >= b->clip.x0 && x < b->clip.x1 && y >= b->clip.y0 && y < b->clip.y1)
+                BM_SET(b, x, y, b->color);
+
+            t += inc;
+
+            // This has the effect of smoothing out the curve:
+            inc *= 1.05;
+
+            // Remember the last pixel drawn
+            lx = x;
+            ly = y;
+        }
     } while(t < 1.0);
-    bm_line(b, lx, ly, x2, y2);
+    bm_putpixel(b, x2, y2);
+}
+
+void bm_bezier4(Bitmap *b, int x0, int y0, int x1, int y1, int x2, int y2, int x3, int y3) {
+    // Cubic Bezier curve
+    int x, y, lx = x0, ly = y0;
+
+    assert(b);
+
+    bm_putpixel(b, x0, y0);
+
+    int steps = abs(x1 - x0) + abs(y1 - y0) + abs(x2 - x1) + abs(y2 - y1) + abs(x3 - x2) + abs(y3 - y2);
+    if(steps == 0)
+        return;
+    double t = 0, inc = 1.0/steps;
+    do {
+        double dt = t + inc, nt = 1.0 - dt;
+        double dbx = nt*nt*nt*x0 + 3.0*nt*nt*dt*x1 + 3*nt*dt*dt*x2 + dt*dt*dt*x3 + 0.5;
+        double dby = nt*nt*nt*y0 + 3.0*nt*nt*dt*y1 + 3*nt*dt*dt*y2 + dt*dt*dt*y3 + 0.5;
+
+        x = (int)dbx, y = (int)dby;
+
+        int dx = abs(x - lx), dy = abs(y - ly);
+
+        if(dx > 1 || dy > 1) {
+            inc *= 0.75;
+        } else if(dx == 0 && dy == 0) {
+            inc *= 1.5;
+        } else {
+            if(x >= b->clip.x0 && x < b->clip.x1 && y >= b->clip.y0 && y < b->clip.y1)
+                BM_SET(b, x, y, b->color);
+            t += inc;
+            lx = x;
+            ly = y;
+        }
+    } while(t < 1.0);
+    bm_putpixel(b, x3, y3);
 }
 
 void bm_poly(Bitmap *b, BmPoint points[], unsigned int n) {
     unsigned int i;
+    assert(b);
     if(n < 2) return;
     for(i = 0; i < n - 1; i++) {
         bm_line(b, points[i].x, points[i].y, points[i+1].x, points[i+1].y);
@@ -4684,8 +5954,10 @@ void bm_fillpoly(Bitmap *b, BmPoint points[], unsigned int n) {
     You might also be interested in this article:
     http://nothings.org/gamedev/rasterize/
     */
-    unsigned int i, j, c = bm_get_color(b);
+    unsigned int i, j, c;
     int x, y;
+    assert(b);
+    c = bm_get_color(b);
     if(n < 2)
         return;
     else if(n == 2) {
@@ -4697,7 +5969,7 @@ void bm_fillpoly(Bitmap *b, BmPoint points[], unsigned int n) {
     unsigned int nodes;
 
     if(n > MAX_POLY_CORNERS) {
-        nodeX = calloc(n, sizeof *nodeX);
+        nodeX = CAST(int*)(calloc(n, sizeof *nodeX));
         if(!nodeX) return;
     }
 
@@ -4722,7 +5994,7 @@ void bm_fillpoly(Bitmap *b, BmPoint points[], unsigned int n) {
         for(i = 0; i < n; i++) {
             if((points[i].y < y && points[j].y >= y)
                 || (points[j].y < y && points[i].y >= y)) {
-                nodeX[nodes++] = (int)(points[i].x + (double)(y - points[i].y) * (points[j].x - points[i].x) / (points[j].y - points[i].y));
+                nodeX[nodes++] = (int)((double)points[i].x + ((double)y - points[i].y) * ((double)points[j].x - points[i].x) / ((double)points[j].y - points[i].y));
             }
             j = i;
         }
@@ -4733,9 +6005,7 @@ void bm_fillpoly(Bitmap *b, BmPoint points[], unsigned int n) {
         i = 0;
         while(i < nodes - 1) {
             if(nodeX[i] > nodeX[i+1]) {
-                int swap = nodeX[i];
-                nodeX[i] = nodeX[i + 1];
-                nodeX[i + 1] = swap;
+                SWAPINT(nodeX[i], nodeX[i + 1]);
                 if(i) i--;
             } else {
                 i++;
@@ -4767,6 +6037,8 @@ void bm_fill(Bitmap *b, int x, int y) {
         mqs = 128; /* Max queue size */
     unsigned int sc, dc; /* Source and Destination colors */
 
+    assert(b);
+
     dc = b->color;
     b->color = BM_GET(b, x, y);
     sc = b->color;
@@ -4777,7 +6049,7 @@ void bm_fill(Bitmap *b, int x, int y) {
     if(sc == dc)
         return;
 
-    queue = calloc(mqs, sizeof *queue);
+    queue = CAST(BmPoint*)(calloc(mqs, sizeof *queue));
     if(!queue)
         return;
 
@@ -4816,8 +6088,8 @@ void bm_fill(Bitmap *b, int x, int y) {
                     queue[qs++] = nn;
                     if(qs == mqs) {
                         mqs <<= 1;
-                        void *tmp = realloc(queue, mqs * sizeof *queue);
-                        if (!queue) {
+                        BmPoint *tmp = CAST(BmPoint*)(realloc(queue, mqs * sizeof *queue));
+                        if (!tmp) {
                             free(queue);
                             return;
                         }
@@ -4831,7 +6103,7 @@ void bm_fill(Bitmap *b, int x, int y) {
                     queue[qs++] = nn;
                     if(qs == mqs) {
                         mqs <<= 1;
-                        void *tmp = realloc(queue, mqs * sizeof *queue);
+                        BmPoint *tmp = CAST(BmPoint*)(realloc(queue, mqs * sizeof *queue));
                         if (!tmp) {
                             free(queue);
                             return;
@@ -4871,6 +6143,20 @@ static unsigned int closest_color(unsigned int c, unsigned int palette[], size_t
         }
     }
     return palette[m];
+}
+
+static uint32_t count_trailing_zeroes(uint32_t v) {
+    /* Count the consecutive zero bits (trailing) on the right in parallel
+       https://graphics.stanford.edu/~seander/bithacks.html#ZerosOnRightParallel */
+    uint32_t c = 32;
+    v &= -(int32_t)(v);
+    if (v) c--;
+    if (v & 0x0000FFFF) c -= 16;
+    if (v & 0x00FF00FF) c -= 8;
+    if (v & 0x0F0F0F0F) c -= 4;
+    if (v & 0x33333333) c -= 2;
+    if (v & 0x55555555) c -= 1;
+    return c;
 }
 
 static void fs_add_factor(Bitmap *b, int x, int y, int er, int eg, int eb, int f) {
@@ -4966,14 +6252,14 @@ static void reduce_palette_bayer(Bitmap *b, unsigned int palette[], size_t n, in
             int f = (bayer[(y & af) * dim + (x & af)] - sub);
 
             R += R * f / fac;
-            if(R > 255) R = 255;
-            else if(R < 0) R = 0;
+            if(R > 255)
+                R = 255;
             G += G * f / fac;
-            if(G > 255) G = 255;
-            else if(G < 0) G = 0;
+            if(G > 255)
+                G = 255;
             B += B * f / fac;
-            if(B > 255) B = 255;
-            else if(B < 0) B = 0;
+            if(B > 255)
+                B = 255;
             oldpixel = (R << 16) | (G << 8) | B;
             newpixel = closest_color(oldpixel, palette, n);
             BM_SET(b, x, y, newpixel);
@@ -4989,12 +6275,12 @@ void bm_reduce_palette_OD8(Bitmap *b, unsigned int palette[], unsigned int n) {
     reduce_palette_bayer(b, palette, n, bayer8x8, 8, 65);
 }
 
-unsigned int *bm_load_palette(const char * filename, unsigned int *npal) {
-    unsigned int *pal, n = 0, an = 8;
-    FILE *f;
+unsigned int* bm_load_palette(const char* filename, unsigned int* npal) {
+    unsigned int* pal = NULL, n = 0, an = 8;
+    FILE* f = NULL;
     char buf[64];
 
-    if(!filename || !npal) return NULL;
+    if (!filename || !npal) return NULL;
 
     *npal = 0;
 
@@ -5003,60 +6289,144 @@ unsigned int *bm_load_palette(const char * filename, unsigned int *npal) {
     if (err != 0) return NULL;
 #else
     f = fopen(filename, "r");
-    if(!f) return NULL;
+    if (!f) return NULL;
 #endif
 
-    pal = calloc(an, sizeof *pal);
-    if (!pal) {
+    fgets(buf, sizeof buf, f);
+    if (!strncmp(buf, "JASC-PAL", 8)) {
+        /* Paintshop Pro palette http://www.cryer.co.uk/file-types/p/pal.htm */
+        int version;
+#ifdef SAFE_C11
+        if (fscanf_s(f, "%d %u", &version, &an) != 2)
+            goto error;
+#else
+        if (fscanf(f, "%d %u", &version, &an) != 2)
+            goto error;
+#endif
+        (void)version;
+
+        pal = calloc(an, sizeof * pal);
+        if (!pal)
+            goto error;
+
+        for (n = 0; n < an; n++) {
+            unsigned int r, g, b;
+#ifdef SAFE_C11
+            if (fscanf_s(f, "%u %u %u", &r, &g, &b) != 3)
+                goto error;
+#else
+            if (fscanf(f, "%u %u %u", &r, &g, &b) != 3)
+                goto error;
+#endif
+            pal[n] = (r << 16) | (g << 8) | b;
+        }
+        *npal = an;
         fclose(f);
-        return NULL;
+        return pal;
     }
-    while(fgets(buf, sizeof buf, f) && n < 256) {
-        char *s, *e, *c = buf;
-        while(*c && isspace(*c)) c++;
+    else
+        rewind(f);
+
+    /* TODO: Here's a spec for the Microsoft PAL format
+    https://worms2d.info/Palette_file */
+
+    pal = calloc(an, sizeof * pal);
+    if (!pal)
+        goto error;
+    while (fgets(buf, sizeof buf, f) && n < 256) {
+        char* s, * e, * c = buf;
+        while (*c && isspace(*c)) c++;
         s = c;
-        if(!*s) continue;
-        while(*c) {
-            if(*c == ';') {
+        if (!*s) continue;
+        while (*c) {
+            if (*c == ';') {
                 *c = '\0';
                 break;
             }
             c++;
         }
         e = c - 1;
-        while(e > s && isspace(*e)) {
+        while (e > s && isspace(*e)) {
             *e = '\0';
             e--;
         }
-        if(e <= s) continue;
+        if (e <= s) continue;
 
         pal[n++] = bm_atoi(s);
-        if(n == an) {
+        if (n == an) {
             an <<= 1;
-            void *tmp = realloc(pal, an * sizeof *pal);
-            if (!tmp) {
-                free(pal);
-                fclose(f);
-                return NULL;
-            }
+            void* tmp = realloc(pal, an * sizeof * pal);
+            if (!tmp)
+                goto error;
             pal = tmp;
         }
     }
-    fclose(f);
+    if (n == 0)
+        goto error;
 
-    if(n == 0) {
-        free(pal);
-        return NULL;
-    }
+    fclose(f);
     *npal = n;
     return pal;
+
+error:
+    fclose(f);
+    if (pal)
+        free(pal);
+    return NULL;
+}
+
+int bm_save_palette(const char* filename, unsigned int* pal, unsigned int npal) {
+    unsigned i;
+    FILE* f;
+    if (!filename)
+        return 0;
+
+#ifdef SAFE_C11
+    errno_t err = fopen_s(&f, filename, "rb");
+    if (err != 0)
+        return 0;
+#else
+    f = fopen(filename, "w");
+    if (!f)
+        return 0;
+#endif
+    fputs("JASC-PAL\n", f);
+    fputs("0100\n", f);
+    fprintf(f, "%u\n", npal);
+    for (i = 0; i < npal; i++) {
+        unsigned char R, G, B;
+        bm_get_rgb(pal[i], &R, &G, &B);
+        fprintf(f, "%u %u %u\n", R, G, B);
+    }
+    fclose(f);
+    return 1;
+}
+
+Bitmap *bm_swap_rb(Bitmap *b) {
+    int i;
+    for(i = 0; i < b->w * b->h; i++) {
+        unsigned int *pixp = ((unsigned int *)b->data) + i;
+        unsigned int c = *pixp;
+        *pixp = (c & 0xFF00FF00) | ((c & 0xFF) << 16) | ((c >> 16) & 0xFF);
+    }
+    return b;
+}
+
+int bm_stricmp(const char *p, const char *q) {
+    for(;*p && tolower(*p) == tolower(*q); p++, q++);
+    return tolower(*p) - tolower(*q);
 }
 
 void bm_set_font(Bitmap *b, BmFont *font) {
-    b->font = font;
+    assert(b);
+    BmFont *old = b->font;
+    b->font = bm_font_retain(font);
+    if(old)
+        bm_font_release(old);
 }
 
 BmFont *bm_get_font(Bitmap *b) {
+    assert(b);
     return b->font;
 }
 
@@ -5064,6 +6434,7 @@ int bm_text_width(Bitmap *b, const char *s) {
     int len = 0, max_len = 0;
     int glyph_width;
 
+    assert(b);
     if(!b->font || !b->font->width)
         return 0;
 
@@ -5088,6 +6459,7 @@ int bm_text_width(Bitmap *b, const char *s) {
 int bm_text_height(Bitmap *b, const char *s) {
     int height = 1;
     int glyph_height;
+    assert(b);
     if(!b->font || !b->font->height)
         return 0;
     glyph_height = b->font->height(b->font);
@@ -5100,10 +6472,12 @@ int bm_text_height(Bitmap *b, const char *s) {
 
 int bm_putc(Bitmap *b, int x, int y, char c) {
     char text[2] = {c, 0};
+    assert(b);
     return bm_puts(b, x, y, text);
 }
 
 int bm_puts(Bitmap *b, int x, int y, const char *text) {
+    assert(b);
     if(!b->font || !b->font->puts)
         return 0;
     return b->font->puts(b, x, y, text);
@@ -5112,6 +6486,7 @@ int bm_puts(Bitmap *b, int x, int y, const char *text) {
 int bm_printf(Bitmap *b, int x, int y, const char *fmt, ...) {
     char buffer[256];
     va_list arg;
+    assert(b);
     if(!b->font || !b->font->puts) return 0;
     va_start(arg, fmt);
     vsnprintf(buffer, sizeof buffer, fmt, arg);
@@ -5119,10 +6494,21 @@ int bm_printf(Bitmap *b, int x, int y, const char *fmt, ...) {
     return bm_puts(b, x, y, buffer);
 }
 
-void bm_free_font(BmFont *font) {
-    if(font && font->dtor) {
-        font->dtor(font);
+BmFont *bm_font_retain(BmFont *font) {
+    font->ref_count++;
+    return font;
+}
+
+unsigned int bm_font_release(BmFont *font) {
+    assert(font);
+    assert(font->ref_count > 0);
+    font->ref_count--;
+    if(!font->ref_count) {
+        if(font->dtor)
+            font->dtor(font);
+        return 0;
     }
+    return font->ref_count;
 }
 
 /** RASTER FONT FUNCTIONS ******************************************************/
@@ -5136,7 +6522,7 @@ typedef struct {
 
 static int rf_puts(Bitmap *b, int x, int y, const char *s) {
     assert(!strcmp(b->font->type, "RASTER_FONT"));
-    RasterFontData *data = b->font->data;
+    RasterFontData *data = CAST(RasterFontData *)(b->font->data);
     int x0 = x;
     while(*s) {
         if(*s == '\n') {
@@ -5163,12 +6549,12 @@ static int rf_puts(Bitmap *b, int x, int y, const char *s) {
 
 static int rf_width(BmFont *font) {
     assert(!strcmp(font->type, "RASTER_FONT"));
-    RasterFontData *data = font->data;
+    RasterFontData *data = CAST(RasterFontData *)(font->data);
     return data->width;
 }
 static int rf_height(BmFont *font) {
     assert(!strcmp(font->type, "RASTER_FONT"));
-    RasterFontData *data = font->data;
+    RasterFontData *data = CAST(RasterFontData *)(font->data);
     return data->height;
 }
 
@@ -5182,15 +6568,16 @@ static void rf_free_font(BmFont *font) {
 
 BmFont *bm_make_ras_font(const char *file, int spacing) {
     unsigned int bg = 0;
-    BmFont *font = malloc(sizeof *font);
+    BmFont *font = CAST(BmFont *)(malloc(sizeof *font));
     if (!font)
         return NULL;
     font->type = "RASTER_FONT";
+    font->ref_count = 1;
     font->puts = rf_puts;
     font->width = rf_width;
     font->height = rf_height;
     font->dtor = rf_free_font;
-    RasterFontData *data = malloc(sizeof *data);
+    RasterFontData *data = CAST(RasterFontData *)(malloc(sizeof *data));
     if (!data) {
         SET_ERROR("out of memory");
         free(font);
@@ -5228,7 +6615,7 @@ typedef struct {
 
 static int sf_puts(Bitmap *b, int x, int y, const char *s) {
     assert(!strcmp(b->font->type, "SFONT"));
-    SFontData *data = b->font->data;
+    SFontData *data = CAST(SFontData *)(b->font->data);
     int x0 = x;
 
     int cw = 0, ch = data->bmp->h - 1;
@@ -5272,12 +6659,12 @@ static int sf_puts(Bitmap *b, int x, int y, const char *s) {
 }
 static int sf_width(BmFont *font) {
     assert(!strcmp(font->type, "SFONT"));
-    SFontData *data = font->data;
+    SFontData *data = CAST(SFontData *)(font->data);
     return data->width;
 }
 static int sf_height(BmFont *font) {
     assert(!strcmp(font->type, "SFONT"));
-    SFontData *data = font->data;
+    SFontData *data = CAST(SFontData *)(font->data);
     return data->height;
 }
 static void sf_dtor(BmFont *font) {
@@ -5289,21 +6676,23 @@ static void sf_dtor(BmFont *font) {
 }
 
 BmFont *bm_make_sfont(const char *file) {
+    SET_ERROR("no error");
     unsigned int bg, mark;
-    int cnt = 0, x, w = 1, s = 0, mw = 0;
+    int cnt = 0, x, w = 1, s = 0, mw = 0, state = 0;
     Bitmap *b = NULL;
     SFontData *data = NULL;
-    BmFont *font = malloc(sizeof *font);
+    BmFont *font = CAST(BmFont *)(malloc(sizeof *font));
     if(!font) {
         SET_ERROR("out of memory");
         return NULL;
     }
     font->type = "SFONT";
+    font->ref_count = 1;
     font->puts = sf_puts;
     font->width = sf_width;
     font->height = sf_height;
     font->dtor = sf_dtor;
-    data = malloc(sizeof *data);
+    data = CAST(SFontData *)(malloc(sizeof *data));
     if(!data) {
         SET_ERROR("out of memory");
         goto error;
@@ -5324,7 +6713,6 @@ BmFont *bm_make_sfont(const char *file) {
 
     /* Use a small state machine to extract all the
     characters' offsets and widths */
-    int state = 0;
     for(x = 0; x < b->w; x++) {
         unsigned int col = bm_get(b, x, 0);
         if(cnt == 94)
@@ -5458,7 +6846,7 @@ static void xbmf_putc(Bitmap *b, const unsigned char *xbm_bits, int x, int y, un
     int frow, fcol, byte;
     int i, j;
 
-    if(c < 32 || c > 127)
+    if(c < 32)
         return;
 
     c -= 32;
@@ -5487,7 +6875,7 @@ static int xbmf_puts(Bitmap *b, int x, int y, const char *text) {
 
     if(!b->font) return 0;
 
-    info = b->font->data;
+    info = CAST(XbmFontInfo*)(b->font->data);
     if(info) {
         spacing = info->spacing;
         bits = info->bits;
@@ -5524,30 +6912,32 @@ static int xbmf_puts(Bitmap *b, int x, int y, const char *text) {
 }
 
 static int xbmf_width(BmFont *font) {
-    XbmFontInfo *info = font->data;
+    XbmFontInfo *info = CAST(XbmFontInfo *)(font->data);
     if(!info) return 6;
     return info->spacing;
 }
 static int xbmf_height(BmFont *font) {
+    (void)font;
     return 8;
 }
 
 static void xbmf_free(BmFont *font) {
-    XbmFontInfo *info = font->data;
+    XbmFontInfo *info = CAST(XbmFontInfo *)(font->data);
     assert(!strcmp(font->type, "XBM"));
     free(info);
     free(font);
 }
 
 BmFont *bm_make_xbm_font(const unsigned char *bits, int spacing) {
+    SET_ERROR("no error");
     BmFont *font;
     XbmFontInfo *info;
-    font = malloc(sizeof *font);
+    font = CAST(BmFont *)(malloc(sizeof *font));
     if(!font) {
         SET_ERROR("out of memory");
         return NULL;
     }
-    info = malloc(sizeof *info);
+    info = CAST(XbmFontInfo *)(malloc(sizeof *info));
     if(!info) {
         SET_ERROR("out of memory");
         free(font);
@@ -5558,6 +6948,7 @@ BmFont *bm_make_xbm_font(const unsigned char *bits, int spacing) {
     info->spacing = spacing;
 
     font->type = "XBM";
+    font->ref_count = 1;
     font->puts = xbmf_puts;
     font->width = xbmf_width;
     font->height = xbmf_height;
@@ -5568,6 +6959,20 @@ BmFont *bm_make_xbm_font(const unsigned char *bits, int spacing) {
 }
 
 void bm_reset_font(Bitmap *b) {
-    static BmFont font = {"XBM",xbmf_puts,xbmf_width,xbmf_height,NULL,NULL};
+    static BmFont font = {"XBM",1,xbmf_puts,xbmf_width,xbmf_height,NULL,NULL};
     bm_set_font(b, &font);
+}
+
+const char *bm_get_error() {
+#if BM_LAST_ERROR
+    return bm_last_error;
+#else
+    return "";
+#endif
+}
+
+void bm_set_error(const char *e) {
+#if BM_LAST_ERROR
+    bm_last_error = e;
+#endif
 }

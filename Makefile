@@ -36,12 +36,15 @@ c8dasm: dasmmain.o c8dasm.o chip8.o
 .c.o:
 	$(CC) $(CFLAGS) $< -o $@
 
+asmmain.o: asmmain.c chip8.h
+bmp.o: bmp.c bmp.h
 c8asm.o: c8asm.c chip8.h
 c8dasm.o: c8dasm.c chip8.h
 chip8.o: chip8.c chip8.h
-bmp.o: bmp.c bmp.h
-asmmain.o: asmmain.c chip8.h
 dasmmain.o: dasmmain.c chip8.h
+render.o: render.c gdi/gdi.h gdi/../bmp.h gdi/../app.h chip8.h bmp.h
+gdi.o: gdi/gdi.c gdi/../bmp.h gdi/gdi.h gdi/../app.h
+pocadv.o: sdl/pocadv.c sdl/pocadv.h sdl/../app.h sdl/../bmp.h
 
 # SDL specific:
 chip8: pocadv.o render-sdl.o chip8.o bmp.o
