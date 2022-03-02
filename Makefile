@@ -22,7 +22,7 @@ else
   LDFLAGS += -s
 endif
 
-all: c8asm c8dasm $(EXECUTABLES) docs example
+all: c8asm c8dasm $(EXECUTABLES) docs
 
 debug:
 	make BUILD=debug
@@ -53,12 +53,6 @@ render-sdl.o: render.c chip8.h sdl/pocadv.h app.h bmp.h
 	$(CC) $(CFLAGS) -DSDL2 `sdl2-config --cflags` $< -o $@
 pocadv.o: sdl/pocadv.c sdl/pocadv.h app.h bmp.h
 	$(CC) $(CFLAGS) -DSDL2 `sdl2-config --cflags` $< -o $@
-
-# Example
-example : examples/CUBE8.ch8
-examples/CUBE8.ch8 : examples/cube.asm ./c8asm
-	mkdir -p GAMES
-	./c8asm -o $@ $<
 
 # Windows GDI-version specific:
 chip8-gdi: gdi.o render-gdi.o chip8.o bmp.o
