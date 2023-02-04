@@ -243,7 +243,8 @@ scan_start:
                 }
             }
         }
-    } else if(isdigit(*in)) {
+    } else if(isdigit(*in) || *in=='-' || *in=='+') {
+        *tok++ = *in++;
         while(isdigit(*in))
             *tok++ = *in++;
         if(isalnum(*in))
@@ -313,9 +314,9 @@ static int get_addr() {
 
 static int get_byte() {
     int a = atoi(token);
-    if(a < 0 || a > 0xFF)
+    if(a < -128 || a > 0xFF)
         exit_error("error:%d: invalid byte value %d (%02X)\n", line, a, a);
-    return a;
+    return a&0xff;
 }
 
 static int get_word() {
