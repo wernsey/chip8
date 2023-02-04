@@ -244,7 +244,8 @@ scan_start:
             }
         }
     } else if(isdigit(*in) || *in=='-' || *in=='+') {
-        while(isdigit(*in) || *in=='-' || *in=='+')
+        *tok++ = *in++;
+        while(isdigit(*in))
             *tok++ = *in++;
         if(isalnum(*in))
             exit_error("error:%d: invalid number\n", line);
