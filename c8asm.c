@@ -316,7 +316,7 @@ static int get_byte() {
     int a = atoi(token);
     if(a < -128 || a > 0xFF)
         exit_error("error:%d: invalid byte value %d (%02X)\n", line, a, a);
-    return a;
+    return a&0xff;
 }
 
 static int get_word() {
