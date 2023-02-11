@@ -113,7 +113,7 @@ static void exit_error(const char *msg, ...) {
 }
 
 static void emit(uint16_t inst) {
-    if(next_instr >= TOTAL_RAM - 1)
+    if(next_instr >= TOTAL_RAM)
         exit_error("error: program too large\n");
     program[next_instr].line = line;
     program[next_instr++].byte = inst >> 8;
@@ -138,7 +138,7 @@ static void emit_l(uint16_t inst, const char *label) {
 }
 
 static void emit_b(uint8_t byte) {
-    if(next_instr >= TOTAL_RAM - 1)
+    if(next_instr >= TOTAL_RAM)
         exit_error("error: program too large\n");
     program[next_instr].line = line;
     program[next_instr++].byte = byte;
