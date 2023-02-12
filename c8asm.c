@@ -162,12 +162,12 @@ static void add_label(const char *label, const int linenum) {
     n_lookup++;
 }
 
-static void add_definition(char *name, int type, char *value, const int linenum) {
+static void add_definition(const Stepper * stepper, char *name) {
     if(n_defs == MAX_DEFS)
-        exit_error("error:%d: too many definitions\n", linenum);
+        exit_error("error:%d: too many definitions\n", stepper->linenum);
     defs[n_defs].name = name;
-    defs[n_defs].type = type;
-    defs[n_defs].value = value;
+    defs[n_defs].type = stepper->sym;
+    defs[n_defs].value = strdup(stepper->token);
     n_defs++;
 }
 
@@ -364,7 +364,7 @@ int c8_assemble(const char *text) {
             nextsym(&stepper);
             if(stepper.sym != SYM_NUMBER && stepper.sym != SYM_REGISTER)
                 exit_error("error:%d: value expected\n", stepper.linenum);
-            add_definition(name, stepper.sym, strdup(stepper.token), stepper.linenum);
+            add_definition(&stepper, name);
             nextsym(&stepper);
         } else if(stepper.sym == SYM_OFFSET) {
             nextsym(&stepper);
