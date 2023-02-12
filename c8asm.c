@@ -121,7 +121,7 @@ static void exit_error(const char *msg, ...) {
 }
 
 static void emit(const Stepper * stepper, uint16_t inst) {
-    if(next_instr >= TOTAL_RAM - 1)
+    if(next_instr >= TOTAL_RAM)
         exit_error("error: program too large\n");
     program[next_instr].linenum = stepper->linenum;
     program[next_instr++].byte = inst >> 8;
@@ -146,7 +146,7 @@ static void emit_l(const Stepper * stepper, uint16_t inst, const char *label) {
 }
 
 static void emit_b(const Stepper * stepper, uint8_t byte) {
-    if(next_instr >= TOTAL_RAM - 1)
+    if(next_instr >= TOTAL_RAM)
         exit_error("error: program too large\n");
     program[next_instr].linenum = stepper->linenum;
     program[next_instr++].byte = byte;
