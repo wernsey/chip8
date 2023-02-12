@@ -20,7 +20,7 @@ Hexadecimal constants can be written as
 #define MAX_DEFS    256
 #define MAX_LOOKUP  256
 
-enum {
+typedef enum {
     SYM_END,
     SYM_IDENTIFIER,
     SYM_INSTRUCTION,
@@ -38,7 +38,7 @@ enum {
     SYM_OFFSET,
     SYM_DB,
     SYM_DW,
-};
+} SYMBOL;
 
 /* List of instruction names. */
 static const char *inst_names[] = {
@@ -70,7 +70,7 @@ static const char *inst_names[] = {
     "high",
 };
 
-static int sym;
+//static int sym;
 static int line;
 static const char *in, *last;
 static char token[TOK_SIZE];
@@ -113,7 +113,7 @@ static void exit_error(const char *msg, ...) {
 }
 
 static void emit(uint16_t inst) {
-    if(next_instr >= TOTAL_RAM - 1)
+    if(next_instr >= TOTAL_RAM)
         exit_error("error: program too large\n");
     program[next_instr].line = line;
     program[next_instr++].byte = inst >> 8;
@@ -138,7 +138,7 @@ static void emit_l(uint16_t inst, const char *label) {
 }
 
 static void emit_b(uint8_t byte) {
-    if(next_instr >= TOTAL_RAM - 1)
+    if(next_instr >= TOTAL_RAM)
         exit_error("error: program too large\n");
     program[next_instr].line = line;
     program[next_instr++].byte = byte;
@@ -171,7 +171,7 @@ static int nextsym() {
     /* TODO: Ought to guard against buffer overruns in tok, but not today. */
     char *tok = token;
 
-    sym = SYM_END;
+    SYMBOL sym = SYM_END;
     *tok = '\0';
 
 scan_start:
@@ -285,13 +285,13 @@ static void pushback() {
 }
 
 static void expect(int what) {
-    nextsym();
+    SYMBOL sym = nextsym();
     if(sym != what)
         exit_error("error:%d: '%c' expected\n", line, what);
     nextsym();
 }
 
-static int get_register() {
+static int get_register(SYMBOL sym) {
     int reg = token[1];
     if(sym != SYM_REGISTER)
         exit_error("error:%d: register expected\n", line);
@@ -343,7 +343,7 @@ int c8_assemble(const char *text) {
 
     memset(program, 0, sizeof program);
 
-    nextsym();
+    SYMBOL sym = nextsym();
     while(sym != SYM_END) {
         //c8_message("%d %d %s\n", line, sym, token);
         if(sym == SYM_DEFINE) {
@@ -422,23 +422,23 @@ int c8_assemble(const char *text) {
                 }
             } else if(!strcmp("se", token)) {
                 nextsym();
-                regx = get_register();
+                regx = get_register(sym);
                 expect(',');
                 if(sym == SYM_NUMBER)
                     emit(0x3000 | (regx << 8) | get_byte());
                 else if(sym == SYM_REGISTER) {
-                    regy = get_register();
+                    regy = get_register(sym);
                     emit(0x5000 | (regx << 8) | (regy << 4));
                 } else
                     exit_error("error:%d: operand expected\n", line);
             } else if(!strcmp("sne", token)) {
                 nextsym();
-                regx = get_register();
+                regx = get_register(sym);
                 expect(',');
                 if(sym == SYM_NUMBER) {
                     emit(0x4000 | (regx << 8) | get_byte());
                 } else if(sym == SYM_REGISTER) {
-                    regy = get_register();
+                    regy = get_register(sym);
                     emit(0x9000 | (regx << 8) | (regy << 4));
                 } else
                     exit_error("error:%d: operand expected\n", line);
@@ -446,14 +446,14 @@ int c8_assemble(const char *text) {
                 nextsym();
                 if(sym == SYM_I) {
                     expect(',');
-                    emit(0xF01E | (get_register() << 8));
+                    emit(0xF01E | (get_register(sym) << 8));
                 } else {
-                    regx = get_register();
+                    regx = get_register(sym);
                     expect(',');
                     if(sym == SYM_NUMBER) {
                         emit(0x7000 | (regx << 8) | get_byte());
                     } else if(sym == SYM_REGISTER) {
-                        regy = get_register();
+                        regy = get_register(sym);
                         emit(0x8004 | (regx << 8) | (regy << 4));
                     } else
                         exit_error("error:%d: operand expected\n", line);
@@ -468,36 +468,36 @@ int c8_assemble(const char *text) {
                         emit(0xA000 | get_addr());
                 } else if(sym == SYM_DT) {
                     expect(',');
-                    emit(0xF015 | (get_register() << 8));
+                    emit(0xF015 | (get_register(sym) << 8));
                 } else if(sym == SYM_ST) {
                     expect(',');
-                    emit(0xF018 | (get_register() << 8));
+                    emit(0xF018 | (get_register(sym) << 8));
                 } else if(sym == SYM_F) {
                     expect(',');
-                    emit(0xF029 | (get_register() << 8));
+                    emit(0xF029 | (get_register(sym) << 8));
                 } else if(sym == SYM_B) {
                     expect(',');
-                    emit(0xF033 | (get_register() << 8));
+                    emit(0xF033 | (get_register(sym) << 8));
                 } else if(sym == '[') {
                     if(nextsym() != SYM_I || nextsym() != ']')
                         exit_error("error:%d: [I] expected\n", line);
                     if(nextsym() != ',')
                         exit_error("error:%d: ',' expected\n", line);
                     nextsym();
-                    emit(0xF055 | (get_register() << 8));
+                    emit(0xF055 | (get_register(sym) << 8));
                 } else if(sym == SYM_HF) {
                     expect(',');
-                    emit(0xF030 | (get_register() << 8));
+                    emit(0xF030 | (get_register(sym) << 8));
                 } else if(sym == SYM_R) {
                     expect(',');
-                    emit(0xF075 | (get_register() << 8));
+                    emit(0xF075 | (get_register(sym) << 8));
                 } else {
-                    regx = get_register();
+                    regx = get_register(sym);
                     expect(',');
                     if(sym == SYM_NUMBER)
                         emit(0x6000 | (regx << 8) | get_byte());
                     else if(sym == SYM_REGISTER) {
-                        regy = get_register();
+                        regy = get_register(sym);
                         emit(0x8000 | (regx << 8) | (regy << 4));
                     } else if(sym == SYM_DT)
                         emit(0xF007 | (regx << 8));
@@ -514,66 +514,66 @@ int c8_assemble(const char *text) {
                 }
             } else if(!strcmp("or", token)) {
                 nextsym();
-                regx = get_register();
+                regx = get_register(sym);
                 expect(',');
-                regy = get_register();
+                regy = get_register(sym);
                 emit(0x8001 | (regx << 8) | (regy << 4));
             } else if(!strcmp("and", token)) {
                 nextsym();
-                regx = get_register();
+                regx = get_register(sym);
                 expect(',');
-                regy = get_register();
+                regy = get_register(sym);
                 emit(0x8002 | (regx << 8) | (regy << 4));
             } else if(!strcmp("xor", token)) {
                 nextsym();
-                regx = get_register();
+                regx = get_register(sym);
                 expect(',');
-                regy = get_register();
+                regy = get_register(sym);
                 emit(0x8003 | (regx << 8) | (regy << 4));
             } else if(!strcmp("sub", token)) {
                 nextsym();
-                regx = get_register();
+                regx = get_register(sym);
                 expect(',');
-                regy = get_register();
+                regy = get_register(sym);
                 emit(0x8005 | (regx << 8) | (regy << 4));
             } else if(!strcmp("shr", token)) {
                 nextsym();
-                regx = get_register();
+                regx = get_register(sym);
                 nextsym();
                 if(sym == ',') {
                     nextsym();
-                    regy = get_register();
+                    regy = get_register(sym);
                 } else
                     pushback();
                 emit(0x8006 | (regx << 8) | (regy << 4));
             } else if(!strcmp("subn", token)) {
                 nextsym();
-                regx = get_register();
+                regx = get_register(sym);
                 expect(',');
-                regy = get_register();
+                regy = get_register(sym);
                 emit(0x8007 | (regx << 8) | (regy << 4));
             } else if(!strcmp("shl", token)) {
                 nextsym();
-                regx = get_register();
+                regx = get_register(sym);
                 nextsym();
                 if(sym == ',') {
                     nextsym();
-                    regy = get_register();
+                    regy = get_register(sym);
                 } else
                     pushback();
                 emit(0x800E | (regx << 8) | (regy << 4));
             } else if(!strcmp("rnd", token)) {
                 nextsym();
-                regx = get_register();
+                regx = get_register(sym);
                 expect(',');
                 if(sym != SYM_NUMBER)
                     exit_error("error:%d: operand expected\n", line);
                 emit(0xC000 | (regx << 8) | get_byte());
             }  else if(!strcmp("drw", token)) {
                 nextsym();
-                regx = get_register();
+                regx = get_register(sym);
                 expect(',');
-                regy = get_register();
+                regy = get_register(sym);
                 expect(',');
                 int nib = get_byte();
                 if(nib < 0 || nib > 0xF)
@@ -581,10 +581,10 @@ int c8_assemble(const char *text) {
                 emit(0xD000 | (regx << 8) | (regy << 4) | nib);
             } else if(!strcmp("skp", token)) {
                 nextsym();
-                emit(0xE09E | (get_register() << 8));
+                emit(0xE09E | (get_register(sym) << 8));
             } else if(!strcmp("sknp", token)) {
                 nextsym();
-                emit(0xE0A1 | (get_register() << 8));
+                emit(0xE0A1 | (get_register(sym) << 8));
             } else if(!strcmp("scd", token)) {
                 nextsym();
                 int nib = get_byte();
