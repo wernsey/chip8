@@ -99,7 +99,7 @@ static int n_lookup;
 /* Lookup table for DEFINE identifier value statements */
 static struct {
     char *name;
-    int type;
+    SYMBOL type;
     char *value;
 } defs[MAX_DEFS];
 static int n_defs;
