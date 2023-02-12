@@ -77,12 +77,8 @@ typedef struct {
     int linenum;
     char token[TOK_SIZE];
 } Stepper;
-inline void pushback(Stepper * stepper) {
-    stepper->in = stepper->last;
-}
-inline void advance(Stepper * stepper) {
-    stepper->last = stepper->in;
-}
+
+
 /* Generated instructions before binary output */
 static struct {
     uint8_t byte;
@@ -189,7 +185,7 @@ scan_start:
         stepper->in++;
     }
 
-    advance(stepper);
+    stepper->last=stepper->in;
     if(!*stepper->in)
         return SYM_END;
 
@@ -554,7 +550,7 @@ int c8_assemble(const char *text) {
                     nextsym(&stepper);
                     regy = get_register(&stepper);
                 } else
-                    pushback(&stepper);
+                    stepper.in=stepper.last;
                 emit(&stepper, 0x8006 | (regx << 8) | (regy << 4));
             } else if(!strcmp("subn", stepper.token)) {
                 nextsym(&stepper);
@@ -570,7 +566,7 @@ int c8_assemble(const char *text) {
                     nextsym(&stepper);
                     regy = get_register(&stepper);
                 } else
-                    pushback(&stepper);
+                    stepper.in=stepper.last;
                 emit(&stepper, 0x800E | (regx << 8) | (regy << 4));
             } else if(!strcmp("rnd", stepper.token)) {
                 nextsym(&stepper);
