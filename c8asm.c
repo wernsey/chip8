@@ -83,13 +83,15 @@ typedef struct {
 
 /* Generated instructions before binary output */
 static struct {
-    uint8_t byte;
-    char *label;
-    int linenum;
-} program[TOTAL_RAM];
+    struct {
+        uint8_t byte;
+        char label[TOK_SIZE];
+        int linenum;
+    } bytes[TOTAL_RAM];
 
-static uint16_t next_instr; /* Address of next instruction */
-static uint16_t max_instr;  /* Largest instruction address for output */
+    uint16_t next_instr; /* Address of next instruction */
+    uint16_t max_instr;  /* Largest instruction address for output */
+} program;
 
 /* Lookup table for labels for JP and CALL instructions */
 static struct {
@@ -117,24 +119,26 @@ static void exit_error(const char *msg, ...) {
     }
     exit(1);
 }
-
-static void emit(const Stepper * stepper, uint16_t inst) {
-    if(next_instr >= TOTAL_RAM)
+static void emit_b(const Stepper * stepper, uint8_t byte) {
+    if(program.next_instr >= TOTAL_RAM)
         exit_error("error: program too large\n");
-    program[next_instr].linenum = stepper->linenum;
-    program[next_instr++].byte = inst >> 8;
-    program[next_instr].linenum = stepper->linenum;
-    program[next_instr++].byte = inst & 0xFF;
-    if(next_instr > max_instr)
-        max_instr = next_instr;
+    program.bytes[program.next_instr].linenum = stepper->linenum;
+    program.bytes[program.next_instr++].byte = byte;
+    if(program.next_instr > program.max_instr)
+        program.max_instr = program.next_instr;
 }
 
-static void emit_l(const Stepper * stepper, uint16_t inst, const char *label) {
+static inline void emit(const Stepper * stepper, uint16_t inst) {
+    emit_b(stepper->linenum, inst >> 8);
+    emit_b(stepper->linenum, inst & 0xFF);
+}
+/*
+static void emit_l(const Stepper * stepper, uint16_t inst) {
     if(next_instr == TOTAL_RAM)
         exit_error("error: program too large\n");
     program[next_instr].linenum = stepper->linenum;
     program[next_instr].byte = inst >> 8;
-    strcpy(program[next_instr].label, label);
+    strcpy(program[next_instr].label, stepper->token);
     next_instr++;
     program[next_instr].linenum = stepper->linenum;
     program[next_instr].byte = 0;
@@ -142,15 +146,13 @@ static void emit_l(const Stepper * stepper, uint16_t inst, const char *label) {
     if(next_instr > max_instr)
         max_instr = next_instr;
 }
+*/
+static inline void emit_l(const Stepper * stepper, uint16_t inst){
+    strcpy(program.bytes[program.next_instr].label, stepper->token);
+    emit(stepper, inst & 0xf000);
 
-static void emit_b(const Stepper * stepper, uint8_t byte) {
-    if(next_instr >= TOTAL_RAM)
-        exit_error("error: program too large\n");
-    program[next_instr].linenum = stepper->linenum;
-    program[next_instr++].byte = byte;
-    if(next_instr > max_instr)
-        max_instr = next_instr;
 }
+
 
 static void add_label(const char *label, const int linenum) {
     int i;
@@ -160,7 +162,7 @@ static void add_label(const char *label, const int linenum) {
         if(!strcmp(lookup[i].label, label))
             exit_error("error:%d: duplicate label '%s'\n", linenum, label);
     strcpy(lookup[n_lookup].label, label);
-    lookup[n_lookup].addr = next_instr;
+    lookup[n_lookup].addr = program.next_instr;
     n_lookup++;
 }
 
@@ -345,8 +347,8 @@ int c8_assemble(const char *text) {
 
     if(c8_verbose) c8_message("Assembling...\n");
 
-    next_instr = 512;
-    max_instr = 0;
+    program.next_instr = 512;
+    program.max_instr = 0;
 
     stepper.linenum = 1;
     stepper.last = NULL;
@@ -354,7 +356,7 @@ int c8_assemble(const char *text) {
     n_lookup = 0;
     n_defs = 0;
 
-    memset(program, 0, sizeof program);
+    memset(program.bytes, 0, sizeof program);
 
     nextsym(&stepper);
     while(stepper.sym != SYM_END) {
@@ -377,7 +379,7 @@ int c8_assemble(const char *text) {
             nextsym(&stepper);
             if(stepper.sym != SYM_NUMBER)
                 exit_error("error:%d: offset expected\n", stepper.linenum);
-            next_instr = get_addr(&stepper);
+            program.next_instr = get_addr(&stepper);
             nextsym(&stepper);
         } else if(stepper.sym == SYM_DB) {
             do {
@@ -423,13 +425,13 @@ int c8_assemble(const char *text) {
             else if(!strcmp("jp", stepper.token)) {
                 nextsym(&stepper);
                 if(stepper.sym == SYM_IDENTIFIER)
-                    emit_l(&stepper, 0x1000, stepper.token);
+                    emit_l(&stepper, 0x1000);
                 else if(stepper.sym == SYM_REGISTER) {
                     if(strcmp(stepper.token, "v0"))
                         exit_error("error:%d: JP applies to V0 only\n", stepper.linenum);
                     expect(&stepper, ',');
                     if(stepper.sym == SYM_IDENTIFIER)
-                        emit_l(&stepper, 0xB000, stepper.token);
+                        emit_l(&stepper, 0xB000);
                     else
                         emit(&stepper, 0xB000 | get_addr(&stepper));
                 } else
@@ -437,7 +439,7 @@ int c8_assemble(const char *text) {
             } else if(!strcmp("call", stepper.token)) {
                 nextsym(&stepper);
                 if(stepper.sym == SYM_IDENTIFIER)
-                    emit_l(&stepper, 0x2000, stepper.token);
+                    emit_l(&stepper, 0x2000);
                 else {
                     if(stepper.sym != SYM_NUMBER)
                         exit_error("error:%d: address expected", stepper.linenum);
@@ -486,7 +488,7 @@ int c8_assemble(const char *text) {
                 if(stepper.sym == SYM_I) {
                     expect(&stepper, ',');
                     if(stepper.sym == SYM_IDENTIFIER)
-                        emit_l(&stepper, 0xA000, stepper.token);
+                        emit_l(&stepper, 0xA000);
                     else
                         emit(&stepper, 0xA000 | get_addr(&stepper));
                 } else if(stepper.sym == SYM_DT) {
@@ -641,34 +643,34 @@ int c8_assemble(const char *text) {
 
     if(c8_verbose) c8_message("Resolving labels...\n");
     size_t n = PROG_OFFSET;
-    for(i = PROG_OFFSET; i < max_instr; i++) {
-        if(program[i].label) {
+    for(i = PROG_OFFSET; i < program.max_instr; i++) {
+        if(program.bytes[i].label) {
             for(j = 0; j < n_lookup; j++) {
-                if(!strcmp(lookup[j].label, program[i].label)) {
+                if(!strcmp(lookup[j].label, program.bytes[i].label)) {
                     assert(lookup[j].addr <= 0xFFF);
-                    program[i].byte |= (lookup[j].addr >> 8);
-                    program[i + 1].byte = lookup[j].addr & 0xFF;
+                    program.bytes[i].byte |= (lookup[j].addr >> 8);
+                    program.bytes[i + 1].byte = lookup[j].addr & 0xFF;
                     //free(program[i].label);
-                    program[i].label = NULL;
+                    //program.bytes[i].label = NULL;
                     break;
                 }
             }
-            if(program[i].label)
-                exit_error("error:%d: unresolved label '%s'\n", program[i].linenum, program[i].label);
+            if(program.bytes[i].label)
+                exit_error("error:%d: unresolved label '%s'\n", program.bytes[i].linenum, program.bytes[i].label);
         }
         if(c8_verbose > 1) {
             if(!(i & 0x01))
-                c8_message("%03X: %02X", i, program[i].byte);
+                c8_message("%03X: %02X", i, program.bytes[i].byte);
             else
-                c8_message("%02X\n", program[i].byte);
+                c8_message("%02X\n", program.bytes[i].byte);
         }
 
-        c8_set(n++, program[i].byte);
+        c8_set(n++, program.bytes[i].byte);
     }
     if(c8_verbose > 1 && i & 0x01)
         c8_message("\n");
 
-    if(c8_verbose) c8_message("Assembled; %d bytes.\n", max_instr - PROG_OFFSET);
+    if(c8_verbose) c8_message("Assembled; %d bytes.\n", program.max_instr - PROG_OFFSET);
     /*
     for(i = 0; i < n_lookup; i++) {
         free(lookup[i].label);
