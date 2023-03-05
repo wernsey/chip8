@@ -38,6 +38,8 @@ typedef enum {
     SYM_OFFSET,
     SYM_DB,
     SYM_DW,
+    SYM_HI,
+    SYM_LO
 } SYMBOL;
 /* List of instruction names. */
 static const char *inst_names[] = {
@@ -237,6 +239,11 @@ scan_start:
                 stepper->sym = SYM_DB;
             else if(!strcmp(stepper->token, "dw"))
                 stepper->sym = SYM_DW;
+            else if(!strcmp(stepper->token, "hi"))
+                stepper->sym = SYM_HI;
+            else if(!strcmp(stepper->token, "lo"))
+                stepper->sym = SYM_LO;
+
             else {
                 stepper->sym = SYM_IDENTIFIER;
                 for(i = 0; i < n_defs; i++) {
@@ -395,6 +402,16 @@ int c8_assemble(const char *text) {
                 emit_b(&stepper,word & 0xFF);
                 nextsym(&stepper);
             } while(stepper.sym == ',');
+        } else if(stepper.sym == SYM_HI)  {
+            nextsym(&stepper);
+            if(stepper.sym != SYM_IDENTIFIER)
+                exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token);
+            
+        } else if (stepper.sym == SYM_LO) {
+            nextsym(&stepper);
+            if(stepper.sym != SYM_IDENTIFIER)
+                exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token);
+            
         } else if(stepper.sym == SYM_IDENTIFIER) {
             add_label(stepper.token, stepper.linenum);
             expect(&stepper, ':');
