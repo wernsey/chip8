@@ -342,6 +342,22 @@ static int get_word(const Stepper * stepper) {
 	return a;
 }
 
+#define EMIT_IMMEDIATE_INSTRUCTION(_base_)																\
+	if(stepper.sym == SYM_NUMBER)																		\
+		emit(&stepper, _base_ | (regx << 8) | get_byte(&stepper));										\
+	else if (stepper.sym == SYM_HI){																	\
+		nextsym(&stepper);																				\
+		if (stepper.sym!=SYM_IDENTIFIER) 																\
+			exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token);	\
+		emit_l(&stepper, _base_ | (regx << 8),LT_HI);													\
+	}																									\
+	else if (stepper.sym == SYM_LO){ 																	\
+		nextsym(&stepper);																				\
+		if (stepper.sym!=SYM_IDENTIFIER)																\
+			exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token); 	\
+		emit_l(&stepper, _base_ | (regx << 8),LT_LO);													\ 
+	}
+
 int c8_assemble(const char *text) {
 
 	static Stepper stepper;
@@ -447,8 +463,7 @@ int c8_assemble(const char *text) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
-				if(stepper.sym == SYM_NUMBER)
-					emit(&stepper, 0x3000 | (regx << 8) | get_byte(&stepper));
+				EMIT_IMMEDIATE_INSTRUCTION(0x3000)
 				else if(stepper.sym == SYM_REGISTER) {
 					int regy = get_register(&stepper);
 					emit(&stepper, 0x5000 | (regx << 8) | (regy << 4));
@@ -458,9 +473,8 @@ int c8_assemble(const char *text) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
-				if(stepper.sym == SYM_NUMBER) {
-					emit(&stepper, 0x4000 | (regx << 8) | get_byte(&stepper));
-				} else if(stepper.sym == SYM_REGISTER) {
+				EMIT_IMMEDIATE_INSTRUCTION(0x4000)
+				else if(stepper.sym == SYM_REGISTER) {
 					int regy = get_register(&stepper);
 					emit(&stepper, 0x9000 | (regx << 8) | (regy << 4));
 				} else
@@ -473,9 +487,9 @@ int c8_assemble(const char *text) {
 				} else {
 					int regx = get_register(&stepper);
 					expect(&stepper, ',');
-					if(stepper.sym == SYM_NUMBER) {
-						emit(&stepper, 0x7000 | (regx << 8) | get_byte(&stepper));
-					} else if(stepper.sym == SYM_REGISTER) {
+					
+					EMIT_IMMEDIATE_INSTRUCTION(0x7000)
+					else if(stepper.sym == SYM_REGISTER) {
 						int regy = get_register(&stepper);
 						emit(&stepper, 0x8004 | (regx << 8) | (regy << 4));
 					} else
@@ -517,8 +531,8 @@ int c8_assemble(const char *text) {
 				} else {
 					int regx = get_register(&stepper);
 					expect(&stepper, ',');
-					if(stepper.sym == SYM_NUMBER)
-						emit(&stepper, 0x6000 | (regx << 8) | get_byte(&stepper));
+					
+					EMIT_IMMEDIATE_INSTRUCTION(0x6000)
 					else if(stepper.sym == SYM_REGISTER) {
 						int regy = get_register(&stepper);
 						emit(&stepper, 0x8000 | (regx << 8) | (regy << 4));
@@ -526,18 +540,7 @@ int c8_assemble(const char *text) {
 						emit(&stepper, 0xF007 | (regx << 8));
 					else if(stepper.sym == SYM_K)
 						emit(&stepper, 0xF00A | (regx << 8));
-					else if (stepper.sym == SYM_HI){
-						nextsym(&stepper);
-						if (stepper.sym!=SYM_IDENTIFIER)
-							exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token);
-						emit_l(&stepper, 0x6000 | (regx << 8),LT_HI);
-					}
-					else if (stepper.sym == SYM_LO){
-						nextsym(&stepper);
-						if (stepper.sym!=SYM_IDENTIFIER)
-							exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token);
-						emit_l(&stepper, 0x6000 | (regx << 8),LT_LO);
-					}
+
 					else if(stepper.sym == '[') {
 						if(nextsym(&stepper) != SYM_I || nextsym(&stepper) != ']')
 							exit_error("error:%d: [I] expected\n", stepper.linenum);
@@ -603,9 +606,8 @@ int c8_assemble(const char *text) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
-				if(stepper.sym != SYM_NUMBER)
-					exit_error("error:%d: operand expected\n", stepper.linenum);
-				emit(&stepper, 0xC000 | (regx << 8) | get_byte(&stepper));
+				EMIT_IMMEDIATE_INSTRUCTION(0xC000)
+				else exit_error("error:%d: operand expected\n", stepper.linenum);
 			}  else if(!strcmp("drw", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
