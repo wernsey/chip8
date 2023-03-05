@@ -54,7 +54,7 @@ int main(int argc, char *argv[]) {
 
 	c8_reset();
 
-	c8_assemble(text);
+	int return_code = c8_assemble(text);
 
 	if(c8_verbose)
 		printf("Writing output to '%s'...\n", outfile);
@@ -69,5 +69,5 @@ int main(int argc, char *argv[]) {
 	if(c8_verbose)
 		printf("Success.\n");
 
-	return 0;
+	return return_code;
 }

@@ -12,6 +12,7 @@ Hexadecimal constants can be written as
 #include <stdarg.h>
 #include <ctype.h>
 #include <assert.h>
+#include <stdbool.h>
 
 #include "chip8.h"
 
@@ -102,7 +103,7 @@ static int n_lookup;
 
 /* Lookup table for DEFINE identifier value statements */
 static struct {
-    char *name;
+    char name[TOK_SIZE];
     SYMBOL type;
     char value[TOK_SIZE];
 } defs[MAX_DEFS];
@@ -169,7 +170,7 @@ static void add_label(const char *label, const int linenum) {
 static void add_definition(const Stepper * stepper, char *name) {
     if(n_defs == MAX_DEFS)
         exit_error("error:%d: too many definitions\n", stepper->linenum);
-    defs[n_defs].name = name;
+    strcpy(defs[n_defs].name, name);
     defs[n_defs].type = stepper->sym;
     strcpy(defs[n_defs].value,stepper->token);
     n_defs++;
@@ -303,8 +304,10 @@ void expect(Stepper * stepper, int what) {
 
 static int get_register(const Stepper * stepper) {
     int reg = stepper->token[1];
-    if(stepper->sym != SYM_REGISTER)
+    if(stepper->sym != SYM_REGISTER){
+        printf("%s\n", stepper->token);
         exit_error("error:%d: register expected\n", stepper->linenum);
+    }
     assert(isxdigit(reg));
     if(reg >= 'a') {
         reg = reg - 'a' + 0xA;
@@ -361,13 +364,13 @@ int c8_assemble(const char *text) {
         switch(stepper.sym){
         case SYM_DEFINE:
             nextsym(&stepper);
-            char * name;
+            char name[TOK_SIZE];
             /* "Identifier expected" may also mean that the name has
                 already been used, eg. if aaa is already defined as 123
                 then define aaa 456 looks like define 123 456 */
             if(stepper.sym != SYM_IDENTIFIER)
                 exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token);
-            name=stepper.token;
+            strcpy(name,stepper.token);
             nextsym(&stepper);
             if(stepper.sym != SYM_NUMBER && stepper.sym != SYM_REGISTER)
                 exit_error("error:%d: value expected\n", stepper.linenum);
@@ -638,7 +641,7 @@ int c8_assemble(const char *text) {
             }
 
             nextsym(&stepper);
-        
+        break;
         default:
             exit_error("error:%d: unexpected token [%d]: '%s'\n", stepper.linenum, stepper.sym, stepper.token);
         }
@@ -647,7 +650,8 @@ int c8_assemble(const char *text) {
     if(c8_verbose) c8_message("Resolving labels...\n");
     size_t n = PROG_OFFSET;
     for(i = PROG_OFFSET; i < program.max_instr; i++) {
-        if(program.bytes[i].label) {
+        if(*program.bytes[i].label) {
+            bool success=false;
             for(j = 0; j < n_lookup; j++) {
                 if(!strcmp(lookup[j].label, program.bytes[i].label)) {
                     assert(lookup[j].addr <= 0xFFF);
@@ -655,10 +659,11 @@ int c8_assemble(const char *text) {
                     program.bytes[i + 1].byte = lookup[j].addr & 0xFF;
                     //free(program[i].label);
                     //program.bytes[i].label = NULL;
+                    success=true;
                     break;
                 }
             }
-            if(program.bytes[i].label)
+            if(!success)
                 exit_error("error:%d: unresolved label '%s'\n", program.bytes[i].linenum, program.bytes[i].label);
         }
         if(c8_verbose > 1) {
@@ -683,5 +688,5 @@ int c8_assemble(const char *text) {
         free(defs[i].value);
     }
     */
-    return 1;
+    return 0;
 }
