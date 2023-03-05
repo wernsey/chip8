@@ -67,8 +67,8 @@ static const char *inst_names[] = {
     "scr",
     "scl",
     "exit",
-    "low",
-    "high",
+    "lo",
+    "hi",
 };
 
 //static int sym;
@@ -129,8 +129,8 @@ static void emit_b(const Stepper * stepper, uint8_t byte) {
 }
 
 static inline void emit(const Stepper * stepper, uint16_t inst) {
-    emit_b(stepper->linenum, inst >> 8);
-    emit_b(stepper->linenum, inst & 0xFF);
+    emit_b(stepper, inst >> 8);
+    emit_b(stepper, inst & 0xFF);
 }
 /*
 static void emit_l(const Stepper * stepper, uint16_t inst) {
@@ -210,10 +210,7 @@ scan_start:
                 stepper->sym = SYM_INSTRUCTION;
                 break;
             }
-        /* see http://stackoverflow.com/a/15824981/115589
-        if(bsearch(stepper->token, inst_names, (sizeof inst_names)/(sizeof inst_names[0]), sizeof inst_names[0], myStrCmp)) {
-            sym = SYM_INSTRUCTION;
-        } */
+
         if(stepper->sym != SYM_INSTRUCTION) {
             if(stepper->token[0] == 'v' && isxdigit(stepper->token[1]) && !stepper->token[2])
                 stepper->sym = SYM_REGISTER;
@@ -361,7 +358,8 @@ int c8_assemble(const char *text) {
     nextsym(&stepper);
     while(stepper.sym != SYM_END) {
         //c8_message("%d %d %s\n", stepper.linenum, stepper.sym, stepper->token);
-        if(stepper.sym == SYM_DEFINE) {
+        switch(stepper.sym){
+        case SYM_DEFINE:
             nextsym(&stepper);
             char * name;
             /* "Identifier expected" may also mean that the name has
@@ -375,13 +373,15 @@ int c8_assemble(const char *text) {
                 exit_error("error:%d: value expected\n", stepper.linenum);
             add_definition(&stepper, name);
             nextsym(&stepper);
-        } else if(stepper.sym == SYM_OFFSET) {
+        break;
+        case SYM_OFFSET:
             nextsym(&stepper);
             if(stepper.sym != SYM_NUMBER)
                 exit_error("error:%d: offset expected\n", stepper.linenum);
             program.next_instr = get_addr(&stepper);
             nextsym(&stepper);
-        } else if(stepper.sym == SYM_DB) {
+        break;
+        case SYM_DB:
             do {
                 nextsym(&stepper);
                 if(stepper.sym == SYM_END)
@@ -391,33 +391,34 @@ int c8_assemble(const char *text) {
                 emit_b(&stepper,get_byte(&stepper));
                 nextsym(&stepper);
             } while(stepper.sym == ',');
-        } else if(stepper.sym == SYM_DW) {
+        break;
+        case SYM_DW:
             do {
                 nextsym(&stepper);
                 if(stepper.sym == SYM_END)
                     break;
                 if(stepper.sym != SYM_NUMBER)
                     exit_error("error:%d: byte value expected\n", stepper.linenum);
-                //emit_b(get_byte(&stepper));
                 uint16_t word = get_word(&stepper);
-                emit_b(&stepper, word >> 8);
-                emit_b(&stepper,word & 0xFF);
+                emit(&stepper, word);
                 nextsym(&stepper);
             } while(stepper.sym == ',');
-        } else if(stepper.sym == SYM_HI)  {
+        break;
+        case SYM_HI:
             nextsym(&stepper);
             if(stepper.sym != SYM_IDENTIFIER)
                 exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token);
-            
-        } else if (stepper.sym == SYM_LO) {
+        break;
+        case SYM_LO:
             nextsym(&stepper);
             if(stepper.sym != SYM_IDENTIFIER)
                 exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token);
-            
-        } else if(stepper.sym == SYM_IDENTIFIER) {
+        break;
+        case SYM_IDENTIFIER:
             add_label(stepper.token, stepper.linenum);
             expect(&stepper, ':');
-        } else if(stepper.sym == SYM_INSTRUCTION) {
+        break;
+        case SYM_INSTRUCTION:
             if(!strcmp("cls", stepper.token))
                 emit(&stepper, 0x00E0);
             else if(!strcmp("ret", stepper.token))
@@ -637,8 +638,10 @@ int c8_assemble(const char *text) {
             }
 
             nextsym(&stepper);
-        } else
+        
+        default:
             exit_error("error:%d: unexpected token [%d]: '%s'\n", stepper.linenum, stepper.sym, stepper.token);
+        }
     }
 
     if(c8_verbose) c8_message("Resolving labels...\n");
