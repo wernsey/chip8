@@ -93,7 +93,7 @@ static uint16_t max_instr;  /* Largest instruction address for output */
 
 /* Lookup table for labels for JP and CALL instructions */
 static struct {
-    char *label;
+    char label[TOK_SIZE];
     uint16_t addr;
 } lookup[MAX_LOOKUP];
 static int n_lookup;
@@ -102,7 +102,7 @@ static int n_lookup;
 static struct {
     char *name;
     SYMBOL type;
-    char *value;
+    char value[TOK_SIZE];
 } defs[MAX_DEFS];
 static int n_defs;
 
@@ -134,7 +134,7 @@ static void emit_l(const Stepper * stepper, uint16_t inst, const char *label) {
         exit_error("error: program too large\n");
     program[next_instr].linenum = stepper->linenum;
     program[next_instr].byte = inst >> 8;
-    program[next_instr].label = strdup(label);
+    strcpy(program[next_instr].label, label);
     next_instr++;
     program[next_instr].linenum = stepper->linenum;
     program[next_instr].byte = 0;
@@ -159,7 +159,7 @@ static void add_label(const char *label, const int linenum) {
     for(i = 0; i < n_lookup; i++)
         if(!strcmp(lookup[i].label, label))
             exit_error("error:%d: duplicate label '%s'\n", linenum, label);
-    lookup[n_lookup].label = strdup(label);
+    strcpy(lookup[n_lookup].label, label);
     lookup[n_lookup].addr = next_instr;
     n_lookup++;
 }
@@ -169,7 +169,7 @@ static void add_definition(const Stepper * stepper, char *name) {
         exit_error("error:%d: too many definitions\n", stepper->linenum);
     defs[n_defs].name = name;
     defs[n_defs].type = stepper->sym;
-    defs[n_defs].value = strdup(stepper->token);
+    strcpy(defs[n_defs].value,stepper->token);
     n_defs++;
 }
 
@@ -361,13 +361,13 @@ int c8_assemble(const char *text) {
         //c8_message("%d %d %s\n", stepper.linenum, stepper.sym, stepper->token);
         if(stepper.sym == SYM_DEFINE) {
             nextsym(&stepper);
-            char *name;
+            char * name;
             /* "Identifier expected" may also mean that the name has
                 already been used, eg. if aaa is already defined as 123
                 then define aaa 456 looks like define 123 456 */
             if(stepper.sym != SYM_IDENTIFIER)
                 exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token);
-            name = strdup(stepper.token);
+            name=stepper.token;
             nextsym(&stepper);
             if(stepper.sym != SYM_NUMBER && stepper.sym != SYM_REGISTER)
                 exit_error("error:%d: value expected\n", stepper.linenum);
@@ -648,7 +648,7 @@ int c8_assemble(const char *text) {
                     assert(lookup[j].addr <= 0xFFF);
                     program[i].byte |= (lookup[j].addr >> 8);
                     program[i + 1].byte = lookup[j].addr & 0xFF;
-                    free(program[i].label);
+                    //free(program[i].label);
                     program[i].label = NULL;
                     break;
                 }
@@ -669,7 +669,7 @@ int c8_assemble(const char *text) {
         c8_message("\n");
 
     if(c8_verbose) c8_message("Assembled; %d bytes.\n", max_instr - PROG_OFFSET);
-
+    /*
     for(i = 0; i < n_lookup; i++) {
         free(lookup[i].label);
     }
@@ -677,6 +677,6 @@ int c8_assemble(const char *text) {
         free(defs[i].name);
         free(defs[i].value);
     }
-
+    */
     return 1;
 }
