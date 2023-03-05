@@ -156,10 +156,9 @@ static inline void emit_l(const Stepper * stepper, uint16_t inst){
 
 
 static void add_label(const char *label, const int linenum) {
-    int i;
     if(n_lookup == MAX_LOOKUP)
         exit_error("error: too many entries in lookup\n");
-    for(i = 0; i < n_lookup; i++)
+    for(int i = 0; i < n_lookup; i++)
         if(!strcmp(lookup[i].label, label))
             exit_error("error:%d: duplicate label '%s'\n", linenum, label);
     strcpy(lookup[n_lookup].label, label);
@@ -202,11 +201,10 @@ scan_start:
     
 
     if(isalpha(*stepper->in)) {
-        int i;
         while(isalnum(*stepper->in) || *stepper->in == '_')
             *tok++ = tolower(*stepper->in++);
         *tok = '\0';
-        for(i = 0; i < (sizeof inst_names)/(sizeof inst_names[0]); i++)
+        for(int i = 0; i < (sizeof inst_names)/(sizeof inst_names[0]); i++)
             if(!strcmp(inst_names[i], stepper->token)) {
                 stepper->sym = SYM_INSTRUCTION;
                 break;
@@ -246,7 +244,7 @@ scan_start:
 
             else {
                 stepper->sym = SYM_IDENTIFIER;
-                for(i = 0; i < n_defs; i++) {
+                for(int i = 0; i < n_defs; i++) {
                     if(!strcmp(defs[i].name, stepper->token)) {
                         stepper->sym = defs[i].type;
                         strcpy(stepper->token, defs[i].value);
@@ -342,7 +340,6 @@ static int get_word(const Stepper * stepper) {
 int c8_assemble(const char *text) {
 
     static Stepper stepper;
-    int i, j, regx = -1, regy = 0;
     stepper.in = text;
 
     if(c8_verbose) c8_message("Assembling...\n");
@@ -363,8 +360,9 @@ int c8_assemble(const char *text) {
         //c8_message("%d %d %s\n", stepper.linenum, stepper.sym, stepper->token);
         switch(stepper.sym){
         case SYM_DEFINE:
-            nextsym(&stepper);
+        {
             char name[TOK_SIZE];
+            nextsym(&stepper);
             /* "Identifier expected" may also mean that the name has
                 already been used, eg. if aaa is already defined as 123
                 then define aaa 456 looks like define 123 456 */
@@ -376,6 +374,7 @@ int c8_assemble(const char *text) {
                 exit_error("error:%d: value expected\n", stepper.linenum);
             add_definition(&stepper, name);
             nextsym(&stepper);
+        }
         break;
         case SYM_OFFSET:
             nextsym(&stepper);
@@ -451,23 +450,23 @@ int c8_assemble(const char *text) {
                 }
             } else if(!strcmp("se", stepper.token)) {
                 nextsym(&stepper);
-                regx = get_register(&stepper);
+                int regx = get_register(&stepper);
                 expect(&stepper, ',');
                 if(stepper.sym == SYM_NUMBER)
                     emit(&stepper, 0x3000 | (regx << 8) | get_byte(&stepper));
                 else if(stepper.sym == SYM_REGISTER) {
-                    regy = get_register(&stepper);
+                    int regy = get_register(&stepper);
                     emit(&stepper, 0x5000 | (regx << 8) | (regy << 4));
                 } else
                     exit_error("error:%d: operand expected\n", stepper.linenum);
             } else if(!strcmp("sne", stepper.token)) {
                 nextsym(&stepper);
-                regx = get_register(&stepper);
+                int regx = get_register(&stepper);
                 expect(&stepper, ',');
                 if(stepper.sym == SYM_NUMBER) {
                     emit(&stepper, 0x4000 | (regx << 8) | get_byte(&stepper));
                 } else if(stepper.sym == SYM_REGISTER) {
-                    regy = get_register(&stepper);
+                    int regy = get_register(&stepper);
                     emit(&stepper, 0x9000 | (regx << 8) | (regy << 4));
                 } else
                     exit_error("error:%d: operand expected\n", stepper.linenum);
@@ -477,12 +476,12 @@ int c8_assemble(const char *text) {
                     expect(&stepper, ',');
                     emit(&stepper, 0xF01E | (get_register(&stepper) << 8));
                 } else {
-                    regx = get_register(&stepper);
+                    int regx = get_register(&stepper);
                     expect(&stepper, ',');
                     if(stepper.sym == SYM_NUMBER) {
                         emit(&stepper, 0x7000 | (regx << 8) | get_byte(&stepper));
                     } else if(stepper.sym == SYM_REGISTER) {
-                        regy = get_register(&stepper);
+                        int regy = get_register(&stepper);
                         emit(&stepper, 0x8004 | (regx << 8) | (regy << 4));
                     } else
                         exit_error("error:%d: operand expected\n", stepper.linenum);
@@ -521,12 +520,12 @@ int c8_assemble(const char *text) {
                     expect(&stepper, ',');
                     emit(&stepper, 0xF075 | (get_register(&stepper) << 8));
                 } else {
-                    regx = get_register(&stepper);
+                    int regx = get_register(&stepper);
                     expect(&stepper, ',');
                     if(stepper.sym == SYM_NUMBER)
                         emit(&stepper, 0x6000 | (regx << 8) | get_byte(&stepper));
                     else if(stepper.sym == SYM_REGISTER) {
-                        regy = get_register(&stepper);
+                        int regy = get_register(&stepper);
                         emit(&stepper, 0x8000 | (regx << 8) | (regy << 4));
                     } else if(stepper.sym == SYM_DT)
                         emit(&stepper, 0xF007 | (regx << 8));
@@ -543,31 +542,32 @@ int c8_assemble(const char *text) {
                 }
             } else if(!strcmp("or", stepper.token)) {
                 nextsym(&stepper);
-                regx = get_register(&stepper);
+                int regx = get_register(&stepper);
                 expect(&stepper, ',');
-                regy = get_register(&stepper);
+                int regy = get_register(&stepper);
                 emit(&stepper, 0x8001 | (regx << 8) | (regy << 4));
             } else if(!strcmp("and", stepper.token)) {
                 nextsym(&stepper);
-                regx = get_register(&stepper);
+                int regx = get_register(&stepper);
                 expect(&stepper, ',');
-                regy = get_register(&stepper);
+                int regy = get_register(&stepper);
                 emit(&stepper, 0x8002 | (regx << 8) | (regy << 4));
             } else if(!strcmp("xor", stepper.token)) {
                 nextsym(&stepper);
-                regx = get_register(&stepper);
+                int regx = get_register(&stepper);
                 expect(&stepper, ',');
-                regy = get_register(&stepper);
+                int regy = get_register(&stepper);
                 emit(&stepper, 0x8003 | (regx << 8) | (regy << 4));
             } else if(!strcmp("sub", stepper.token)) {
                 nextsym(&stepper);
-                regx = get_register(&stepper);
+                int regx = get_register(&stepper);
                 expect(&stepper, ',');
-                regy = get_register(&stepper);
+                int regy = get_register(&stepper);
                 emit(&stepper, 0x8005 | (regx << 8) | (regy << 4));
             } else if(!strcmp("shr", stepper.token)) {
                 nextsym(&stepper);
-                regx = get_register(&stepper);
+                int regx = get_register(&stepper);
+                int regy = 0;
                 nextsym(&stepper);
                 if(stepper.sym == ',') {
                     nextsym(&stepper);
@@ -577,13 +577,14 @@ int c8_assemble(const char *text) {
                 emit(&stepper, 0x8006 | (regx << 8) | (regy << 4));
             } else if(!strcmp("subn", stepper.token)) {
                 nextsym(&stepper);
-                regx = get_register(&stepper);
+                int regx = get_register(&stepper);
                 expect(&stepper, ',');
-                regy = get_register(&stepper);
+                int regy = get_register(&stepper);
                 emit(&stepper, 0x8007 | (regx << 8) | (regy << 4));
             } else if(!strcmp("shl", stepper.token)) {
                 nextsym(&stepper);
-                regx = get_register(&stepper);
+                int regx = get_register(&stepper);
+                int regy=0;
                 nextsym(&stepper);
                 if(stepper.sym == ',') {
                     nextsym(&stepper);
@@ -593,16 +594,16 @@ int c8_assemble(const char *text) {
                 emit(&stepper, 0x800E | (regx << 8) | (regy << 4));
             } else if(!strcmp("rnd", stepper.token)) {
                 nextsym(&stepper);
-                regx = get_register(&stepper);
+                int regx = get_register(&stepper);
                 expect(&stepper, ',');
                 if(stepper.sym != SYM_NUMBER)
                     exit_error("error:%d: operand expected\n", stepper.linenum);
                 emit(&stepper, 0xC000 | (regx << 8) | get_byte(&stepper));
             }  else if(!strcmp("drw", stepper.token)) {
                 nextsym(&stepper);
-                regx = get_register(&stepper);
+                int regx = get_register(&stepper);
                 expect(&stepper, ',');
-                regy = get_register(&stepper);
+                int regy = get_register(&stepper);
                 expect(&stepper, ',');
                 int nib = get_byte(&stepper);
                 if(nib < 0 || nib > 0xF)
@@ -649,10 +650,10 @@ int c8_assemble(const char *text) {
 
     if(c8_verbose) c8_message("Resolving labels...\n");
     size_t n = PROG_OFFSET;
-    for(i = PROG_OFFSET; i < program.max_instr; i++) {
+    bool success=false;
+    for(int i = PROG_OFFSET; i < program.max_instr; i++) {
         if(*program.bytes[i].label) {
-            bool success=false;
-            for(j = 0; j < n_lookup; j++) {
+            for(int j = 0; j < n_lookup; j++) {
                 if(!strcmp(lookup[j].label, program.bytes[i].label)) {
                     assert(lookup[j].addr <= 0xFFF);
                     program.bytes[i].byte |= (lookup[j].addr >> 8);
@@ -675,7 +676,7 @@ int c8_assemble(const char *text) {
 
         c8_set(n++, program.bytes[i].byte);
     }
-    if(c8_verbose > 1 && i & 0x01)
+    if(c8_verbose > 1 && success)
         c8_message("\n");
 
     if(c8_verbose) c8_message("Assembled; %d bytes.\n", program.max_instr - PROG_OFFSET);
