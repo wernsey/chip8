@@ -142,33 +142,66 @@ static int get_base(const char * a){
 }
 
 static long int parse_int(const char ** expression,const int linenum){
+
+
+	
 	int base = get_base(*expression);
 	if(base <= 0) 
 		exit_error("error%d: Invalid Immediate\n", linenum);
 	if (base!=10)
 		(*expression)++;
 	return strtol(*expression, expression, base);
+
 	
 	
 	
 }
 static int get_precedence(const char c){
 	switch (c){
+		case '&':
+		case '|':
+		case '^':
+			return 1;
 		case '#':
 		case '%':
 		case '-':
 		case '+':
 		case '0'...'9':
-			return 1;
+			return 2;
 		case '*':
 		case '/':
-			return 2;
+			return 3;
 		default:
 			return 0;
 	}
 }
+static bool is_unary_operator(const  char * exp){
+	if ((*exp=='-'||*exp=='+') && exp[1] == '(')
+		return true;
+	if (*exp=='~')
+		return true;
+	else 
+		return false;
+	
+}
+static long int apply_unary_op (const unsigned char op, const long int val, const int linenum){
+	switch (op)
+	{
+	case '+' | 0x80:
+		return val;
+	case '-' | 0x80 :
+		return -val;
+	case '~' | 0x80:
+		return ~val;
+	
+	default:
+		exit_error("error%d: Invalid Arithmetic Expression\n",linenum);
+	}
+	/*unreachable*/
+	return -1;
+}
 #define STACK_HEIGHT 64
-static long int apply_op(const long int l_op, const char op, const long int r_op, const int linenum){
+static long int apply_binary_op(const long int l_op, const char op, const long int r_op, const int linenum){
 	switch (op)
 	{
 	case '+':
@@ -179,8 +212,12 @@ static long int apply_op(const long int l_op, const char op, const long int r_op
 		return l_op*r_op;
 	case '/':
 		return l_op/r_op;
-
-
+	case '|':
+		return l_op|r_op;
+	case '&':
+		return l_op|r_op;
+	case '^':
+		return l_op^r_op;
 	
 	default:
 		exit_error("error%d: Invalid Arithmetic Expression\n",linenum);
@@ -189,15 +226,15 @@ static long int apply_op(const long int l_op, const char op, const long int r_op
 	return -1;
 
 }
-static long int evaluate_arithmetic_expression(const char ** expression, char sentinel, const int linenum){
+static long int evaluate_arithmetic_expression(const char ** expression, const int linenum){
 
-	struct {char stack[STACK_HEIGHT]; char *top;} operators; operators.top=operators.stack-1;
+	struct {unsigned char stack[STACK_HEIGHT]; unsigned char *top;} operators; operators.top=operators.stack-1;
 	struct {long int stack[STACK_HEIGHT]; long int *top;} figures; 
 	*figures.stack=0;figures.top=figures.stack;
-	int prec;
 	bool is_prev_figure = true;
 	bool is_first_char_of_clause = true;
-	while (**expression != sentinel){
+	while (1){
+		int prec;
 		if (**expression == ' '){
 			(*expression)++;
 			continue;
@@ -210,20 +247,25 @@ static long int evaluate_arithmetic_expression(const char ** expression, char se
 			(*expression)++;
 			is_first_char_of_clause=true;
 		} else if(**expression == ')') {
-            while((*operators.top) != '(')
-            {
+			while((*operators.top) != '(')
+			{
 				if (operators.top<operators.stack)
 					exit_error("error%d: Unbalanced Brackets\n", linenum);
-                const long int r_op = *(figures.top--);
-                const long int l_op = *(figures.top--);
-                const char op = *(operators.top--);
-                *(++figures.top)=apply_op(l_op, op, r_op,linenum);
-            } 
+				const long int r_op = *(figures.top--);
+				const long int l_op = *(figures.top--);
+				const unsigned char op = *(operators.top--);
+				*(++figures.top)=apply_binary_op(l_op, op, r_op,linenum);
+			} 
 			is_prev_figure=true;
 			operators.top--;
-            (*expression)++;
+			(*expression)++;
 			is_first_char_of_clause=false;
-
+		} else if (is_unary_operator(*expression) && (!is_prev_figure || is_first_char_of_clause)){
+			if (is_first_char_of_clause) *(++operators.top) = '+';
+			*(++operators.top)=((unsigned char) **expression)|0x80;
+			is_prev_figure=false;
+			(*expression)++;
+			is_first_char_of_clause=false;
 		} else if ((prec=get_precedence(**expression))>0){
 			while( 
 				figures.top>=figures.stack &&
@@ -232,8 +274,8 @@ static long int evaluate_arithmetic_expression(const char ** expression, char se
 			){
 				const long int r_op = *(figures.top--);
 				const long int l_op = *(figures.top--);
-				const char op = *(operators.top--);
-				*(++figures.top) = apply_op(l_op, op, r_op,linenum);
+				const unsigned char op = *(operators.top--);
+				*(++figures.top) = apply_binary_op(l_op, op, r_op,linenum);
 			}
 			if (get_base(*expression)>0){
 				if(is_prev_figure) {
@@ -241,6 +283,12 @@ static long int evaluate_arithmetic_expression(const char ** expression, char se
 				}
 				*(++figures.top)=parse_int(expression, linenum); 
 				is_prev_figure=true;
+				if (*operators.top&0x80){
+					(*figures.top) = apply_unary_op(*operators.top, *figures.top, linenum);
+					operators.top--;
+				}
+
+				
 			} else {
 				if (is_first_char_of_clause) 
 					exit_error("error%d: Invalid Arithmetic Expression\n", linenum);
@@ -252,14 +300,16 @@ static long int evaluate_arithmetic_expression(const char ** expression, char se
 			is_first_char_of_clause=false;
 		} else break;
 	}
-	if (**expression == sentinel) (*expression)++;
 
 	while(operators.top>=operators.stack){
+
+	if (operators.top<operators.stack)
+		exit_error("error%d: Unbalanced Brackets\n", linenum);
 		const long int r_op = *(figures.top--);
 		const long int l_op = *(figures.top--);
-		const char op = *(operators.top--);
-		*(++figures.top)=apply_op(l_op, op, r_op,linenum);
-    }
+		const unsigned char op = *(operators.top--);
+		*(++figures.top)=apply_binary_op(l_op, op, r_op,linenum);
+	}
 	return *figures.stack;
 
 }
@@ -399,8 +449,8 @@ scan_start:
 				}
 			}
 		}
-	} else if(get_base(stepper->in)) {
-		sprintf(stepper->token,"%ld",evaluate_arithmetic_expression(&stepper->in, 0xff, stepper->linenum));
+	} else if(get_base(stepper->in) || is_unary_operator(stepper->in)) {
+		sprintf(stepper->token,"%ld",evaluate_arithmetic_expression(&stepper->in, stepper->linenum));
 		stepper->sym=SYM_NUMBER;
 	} else {
 		stepper->token[0] = *stepper->in;
