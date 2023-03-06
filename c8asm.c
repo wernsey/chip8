@@ -125,6 +125,95 @@ static void exit_error(const char *msg, ...) {
 	}
 	exit(1);
 }
+
+static int get_base(const char * a){
+	char first_char = *a;
+	if (isdigit(first_char) || first_char == '-' || first_char == '+')
+		return 10;
+	 else if (first_char == '#') 
+		return 16;
+	 else if (first_char == '%') 
+	 	return 2;
+	else if (first_char == '(')
+		return -1;
+	else 
+		return 0;
+}
+
+static long int parse_int(const char ** expression){
+	//char * ptr = *expression;
+	int base = get_base(*expression);
+	if(base <= 0) 
+		exit_error("Invalid Immediate\n");
+	if (base!=10)
+		(*expression)++;
+	return strtol(*expression, expression, base);
+	
+	
+	
+}
+
+
+static long int evaluate_arithmetic_expression(const char ** expression, char sentinel){
+	long int high_prec_value=0;
+	long int low_prec_value=0;
+	/* Double check first char */
+	if (get_base(*expression)==0)
+		exit_error("Invalid Arithmetic Expression\n");
+	while (**expression != sentinel){
+		if (get_base(*expression)>0){
+			low_prec_value+=high_prec_value;
+			if ((*expression)[1] == '('){
+				if (**expression == '-'){
+					(*expression)+=2;
+					high_prec_value -= evaluate_arithmetic_expression(expression, ')');
+				 } else if (**expression == '+'){
+					(*expression)+=2;
+					high_prec_value += evaluate_arithmetic_expression(expression, ')');
+
+				 }
+				else	
+					exit_error("Invalid Arithmetic Expression\n");
+
+			} else 
+				high_prec_value=parse_int(expression);
+		} else {
+			if (**expression == '*') {
+				(*expression)++;
+				if (**expression == '('){
+					(*expression)++;
+					high_prec_value *= evaluate_arithmetic_expression(expression, ')');
+				}
+				 else 
+					high_prec_value *= parse_int(expression);
+			} else if (**expression == '/') {
+				(*expression)++;
+				long int divisor;
+				if (**expression== '('){
+					(*expression)++;
+					divisor = evaluate_arithmetic_expression(expression, ')');
+				} else 
+					divisor = parse_int(expression);
+				if (high_prec_value == 0){
+					high_prec_value=divisor;
+				} else if (divisor == 0 ){
+						exit_error("Divide by 0\n");
+				} else {	
+					high_prec_value /= divisor;
+				}
+			} else if (**expression == '('){
+				(*expression)++;
+				high_prec_value = evaluate_arithmetic_expression(expression, ')');
+
+			} else {
+				return low_prec_value+high_prec_value;
+			}
+			
+		}
+	}
+	(*expression)++;
+	return low_prec_value+high_prec_value;
+}
 static void emit_b(const Stepper * stepper, uint8_t byte) {
 	if(program.next_instr >= TOTAL_RAM)
 		exit_error("error: program too large\n");
@@ -260,34 +349,9 @@ scan_start:
 				}
 			}
 		}
-	} else if(isdigit(*stepper->in) || *stepper->in=='-' || *stepper->in=='+') {
-		*tok++ = *stepper->in++;
-		while(isdigit(*stepper->in))
-			*tok++ = *stepper->in++;
-		if(isalnum(*stepper->in))
-			exit_error("error:%d: invalid number\n", stepper->linenum);
-		*tok = '\0';
-		stepper->sym = SYM_NUMBER;
-	} else if(*stepper->in == '#') {
-		stepper->in++;
-		while(isxdigit(*stepper->in))
-			*tok++ = *stepper->in++;
-		if(isalnum(*stepper->in))
-			exit_error("error:%d: invalid #hex number\n", stepper->linenum);
-		*tok = '\0';
-		long x = strtol(stepper->token, NULL, 16);
-		sprintf(stepper->token, "%ld", x);
-		stepper->sym = SYM_NUMBER;
-	} else if(*stepper->in == '%') {
-		stepper->in++;
-		while(strchr("01",*stepper->in))
-			*tok++ = *stepper->in++;
-		if(isalnum(*stepper->in))
-			exit_error("error:%d: invalid %%bin number\n", stepper->linenum);
-		*tok = '\0';
-		long x = strtol(stepper->token, NULL, 2);
-		sprintf(stepper->token, "%ld", x);
-		stepper->sym = SYM_NUMBER;
+	} else if(get_base(stepper->in)) {
+		sprintf(stepper->token,"%ld",evaluate_arithmetic_expression(&stepper->in, 0xff));
+		stepper->sym=SYM_NUMBER;
 	} else {
 		stepper->token[0] = *stepper->in;
 		stepper->token[1] = '\0';
