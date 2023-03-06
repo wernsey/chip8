@@ -78,7 +78,10 @@ typedef struct {
 	int linenum;
 	char token[TOK_SIZE];
 } Stepper;
-
+typedef enum {
+	ET_IMM8,
+	ET_IMM16
+} EMITTED_TYPE;
 typedef enum {
 	LT_NONE,
 	LT_FULL,
@@ -86,13 +89,23 @@ typedef enum {
 	LT_LO
 
 } LABEL_TYPE; 
+
+typedef struct {
+	EMITTED_TYPE type;
+	union {
+		uint8_t imm8;
+		uint16_t imm16;	
+	} value;
+	LABEL_TYPE tlabel;
+} Emitted;
+
 /* Generated instructions before binary output */
 static struct {
 	struct {
 		uint8_t byte;
 		LABEL_TYPE tlabel;
-		char label[TOK_SIZE];
 		int linenum;
+		char label[TOK_SIZE];
 	} bytes[TOTAL_RAM];
 
 	uint16_t next_instr; /* Address of next instruction */
@@ -125,36 +138,13 @@ static void exit_error(const char *msg, ...) {
 	}
 	exit(1);
 }
-
-static int get_base(const char * a){
-	if (isdigit(*a) )
-		return 10;
-	else if ((*a == '-' || *a == '+') && isdigit(a[1]))
-		return 10;
-	else if (*a == '#' && isxdigit(a[1])) 
-		return 16;
-	 else if (*a == '%' && (a[1] == '0' || a[1] == '1')) 
-	 	return 2;
-	else if (*a == '(')
-		return -1;
+static bool is_unary_operator(const  char * exp){
+	if ((*exp=='-'||*exp=='+') && exp[1] == '(')
+		return true;
+	if (*exp=='~')
+		return true;
 	else 
-		return 0;
-}
-
-static long int parse_int(const char ** expression,const int linenum){
-
-
-	
-	int base = get_base(*expression);
-	if(base <= 0) 
-		exit_error("error%d: Invalid Immediate\n", linenum);
-	if (base!=10)
-		(*expression)++;
-	return strtol(*expression, expression, base);
-
-	
-	
-	
+		return false;	
 }
 static int get_precedence(const char c){
 	switch (c){
@@ -175,15 +165,54 @@ static int get_precedence(const char c){
 			return 0;
 	}
 }
-static bool is_unary_operator(const  char * exp){
-	if ((*exp=='-'||*exp=='+') && exp[1] == '(')
-		return true;
-	if (*exp=='~')
-		return true;
+static int get_base(const char * a){
+	if (isdigit(*a) )
+		return 10;
+	else if ((*a == '-' || *a == '+') && isdigit(a[1]))
+		return 10;
+	else if (*a == '#' && isxdigit(a[1])) 
+		return 16;
+	 else if (*a == '%' && (a[1] == '0' || a[1] == '1')) 
+	 	return 2;
+	else if (*a == '(')
+		return -1;
 	else 
-		return false;
-	
+		return 0;
 }
+static long int parse_int(const char ** expression,const int linenum){	
+	int base = get_base(*expression);
+	if(base <= 0) 
+		exit_error("error%d: Invalid Immediate\n", linenum);
+	if (base!=10)
+		(*expression)++;
+	return strtol(*expression, expression, base);	
+}
+static void copy_arithmetic_expression(char * buffer, const char ** in){
+	while(1){
+		if (**in == ' '){
+			(*in)++;
+			continue;
+		} else if (get_base(*in)>0){
+			const char * new=*in;
+			parse_int(&new, 0);
+			memcpy(buffer, *in, new-(*in));
+			buffer+=new-(*in);
+			*in=new; 
+		} else if (
+			is_unary_operator(*in) || get_precedence(**in) || 
+			**in == '(' || **in == ')'
+			){
+				*(buffer++)=*((*in)++);
+
+		} else break;
+	}
+	*buffer='\0';
+}
+
+
+
+
+
 static long int apply_unary_op (const unsigned char op, const long int val, const int linenum){
 	switch (op)
 	{
@@ -226,7 +255,7 @@ static long int apply_binary_op(const long int l_op, const char op, const long i
 	return -1;
 
 }
-static long int evaluate_arithmetic_expression(const char ** expression, const int linenum){
+static long int evaluate_arithmetic_expression(const char * expression, const int linenum){
 
 	struct {unsigned char stack[STACK_HEIGHT]; unsigned char *top;} operators; operators.top=operators.stack-1;
 	struct {long int stack[STACK_HEIGHT]; long int *top;} figures; 
@@ -235,18 +264,18 @@ static long int evaluate_arithmetic_expression(const char ** expression, const i
 	bool is_first_char_of_clause = true;
 	while (1){
 		int prec;
-		if (**expression == ' '){
-			(*expression)++;
+		if (*expression == ' '){
+			expression++;
 			continue;
-		} else if(**expression == '(') {
+		} else if(*expression == '(') {
 			//if it's the first char I want to make sure it doesn't try to "bracket" the initial 0 
 			if(is_first_char_of_clause) *(++operators.top)='+'; 
-			*(++operators.top)=**expression;
+			*(++operators.top)=*expression;
 			*(++figures.top)=0;
 			is_prev_figure=true;
-			(*expression)++;
+			expression++;
 			is_first_char_of_clause=true;
-		} else if(**expression == ')') {
+		} else if(*expression == ')') {
 			while((*operators.top) != '(')
 			{
 				if (operators.top<operators.stack)
@@ -258,15 +287,15 @@ static long int evaluate_arithmetic_expression(const char ** expression, const i
 			} 
 			is_prev_figure=true;
 			operators.top--;
-			(*expression)++;
+			expression++;
 			is_first_char_of_clause=false;
-		} else if (is_unary_operator(*expression) && (!is_prev_figure || is_first_char_of_clause)){
+		} else if (is_unary_operator(expression) && (!is_prev_figure || is_first_char_of_clause)){
 			if (is_first_char_of_clause) *(++operators.top) = '+';
-			*(++operators.top)=((unsigned char) **expression)|0x80;
+			*(++operators.top)=((unsigned char) *expression)|0x80;
 			is_prev_figure=false;
-			(*expression)++;
+			expression++;
 			is_first_char_of_clause=false;
-		} else if ((prec=get_precedence(**expression))>0){
+		} else if ((prec=get_precedence(*expression))>0){
 			while( 
 				figures.top>=figures.stack &&
 				is_prev_figure && 
@@ -277,11 +306,11 @@ static long int evaluate_arithmetic_expression(const char ** expression, const i
 				const unsigned char op = *(operators.top--);
 				*(++figures.top) = apply_binary_op(l_op, op, r_op,linenum);
 			}
-			if (get_base(*expression)>0){
+			if (get_base(expression)>0){
 				if(is_prev_figure) {
 					*(++operators.top)='+';
 				}
-				*(++figures.top)=parse_int(expression, linenum); 
+				*(++figures.top)=parse_int(&expression, linenum); 
 				is_prev_figure=true;
 				if (*operators.top&0x80){
 					(*figures.top) = apply_unary_op(*operators.top, *figures.top, linenum);
@@ -292,8 +321,8 @@ static long int evaluate_arithmetic_expression(const char ** expression, const i
 			} else {
 				if (is_first_char_of_clause) 
 					exit_error("error%d: Invalid Arithmetic Expression\n", linenum);
-				*(++operators.top)=(**expression);
-				(*expression)++;
+				*(++operators.top)=*expression;
+				expression++;
 				is_prev_figure=false;
 
 			} 
@@ -303,8 +332,8 @@ static long int evaluate_arithmetic_expression(const char ** expression, const i
 
 	while(operators.top>=operators.stack){
 
-	if (operators.top<operators.stack)
-		exit_error("error%d: Unbalanced Brackets\n", linenum);
+		if (operators.top<operators.stack)
+			exit_error("error%d: Unbalanced Brackets\n", linenum);
 		const long int r_op = *(figures.top--);
 		const long int l_op = *(figures.top--);
 		const unsigned char op = *(operators.top--);
@@ -313,7 +342,7 @@ static long int evaluate_arithmetic_expression(const char ** expression, const i
 	return *figures.stack;
 
 }
-
+/*
 static void emit_b(const Stepper * stepper, uint8_t byte) {
 	if(program.next_instr >= TOTAL_RAM)
 		exit_error("error: program too large\n");
@@ -350,7 +379,48 @@ static void emit_l(const Stepper * stepper, uint16_t inst, LABEL_TYPE tlabel){
 	}
 }
 
+*/
+static void emit_b(const Stepper * stepper, uint8_t byte, const LABEL_TYPE tlabel) {
+	if(program.next_instr >= TOTAL_RAM)
+		exit_error("error: program too large\n");
+	program.bytes[program.next_instr].linenum = stepper->linenum;
+	program.bytes[program.next_instr].tlabel=tlabel;
+	if (tlabel!=LT_NONE) 
+		strcpy(program.bytes[program.next_instr].label, stepper->token);
+	program.bytes[program.next_instr++].byte = byte;
+	if(program.next_instr > program.max_instr)
+		program.max_instr = program.next_instr;
+}
 
+static void emit(const Stepper * stepper, const Emitted emitted){
+	if (emitted.type == ET_IMM16){
+		switch (emitted.tlabel){
+			case LT_NONE:
+			case LT_FULL:
+				emit_b(stepper, emitted.value.imm16>>8, emitted.tlabel);
+				emit_b(stepper, emitted.value.imm16&0xff, LT_NONE);
+			break;
+			case LT_HI:
+			case LT_LO:
+				emit_b(stepper, emitted.value.imm16>>8, LT_NONE);
+				emit_b(stepper, emitted.value.imm16&0xff, emitted.tlabel);
+			break;
+			
+		}
+
+
+	} else {
+		emit_b(stepper, emitted.value.imm8, emitted.tlabel);
+	}
+}
+static inline void emit_w(const Stepper * stepper, uint16_t word){
+	const Emitted e = (Emitted){
+		.type=ET_IMM16,
+		.value.imm16=word,
+		.tlabel=LT_NONE
+	};
+	emit(stepper, e);
+}
 static void add_label(const char *label, const int linenum) {
 	if(n_lookup == MAX_LOOKUP)
 		exit_error("error: too many entries in lookup\n");
@@ -450,7 +520,8 @@ scan_start:
 			}
 		}
 	} else if(get_base(stepper->in) || is_unary_operator(stepper->in)) {
-		sprintf(stepper->token,"%ld",evaluate_arithmetic_expression(&stepper->in, stepper->linenum));
+		//sprintf(stepper->token,"%ld",evaluate_arithmetic_expression(&stepper->in, stepper->linenum));
+		copy_arithmetic_expression(stepper->token, &stepper->in);
 		stepper->sym=SYM_NUMBER;
 	} else {
 		stepper->token[0] = *stepper->in;
@@ -486,21 +557,21 @@ static int get_register(const Stepper * stepper) {
 }
 
 static int get_addr(const Stepper * stepper) {
-	int a = atoi(stepper->token);
+	int a = evaluate_arithmetic_expression(stepper->token, stepper->linenum);
 	if(a < 0 || a > 0xFFF)
 		exit_error("error:%d: invalid addr %d (%03X)\n", stepper->linenum, a, a);
 	return a;
 }
 
 static int get_byte(const Stepper * stepper) {
-	int a = atoi(stepper->token);
+	int a = evaluate_arithmetic_expression(stepper->token, stepper->linenum);
 	if(a < -128 || a > 0xFF)
 		exit_error("error:%d: invalid byte value %d (%02X)\n", stepper->linenum, a, a);
 	return a&0xff;
 }
 
 static int get_word(const Stepper * stepper) {
-	int a = atoi(stepper->token);
+	int a = evaluate_arithmetic_expression(stepper->token, stepper->linenum);
 	if(a < 0 || a > 0xFFFF)
 		exit_error("error:%d: invalid word value %d (%04X)\n", stepper->linenum, a, a);
 	return a;
@@ -508,18 +579,28 @@ static int get_word(const Stepper * stepper) {
 
 #define EMIT_IMMEDIATE_INSTRUCTION(_base_)																\
 	if(stepper.sym == SYM_NUMBER)																		\
-		emit(&stepper, _base_ | (regx << 8) | get_byte(&stepper));										\
+		emit_w(&stepper, _base_ | (regx << 8) | get_byte(&stepper));									\
 	else if (stepper.sym == SYM_HI){																	\
 		nextsym(&stepper);																				\
 		if (stepper.sym!=SYM_IDENTIFIER) 																\
 			exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token);	\
-		emit_l(&stepper, _base_ | (regx << 8),LT_HI);													\
+		const Emitted e={																				\
+			.type=ET_IMM16,																				\
+			.tlabel=LT_HI,																				\
+			.value.imm16=_base_ | (regx << 8)															\
+		};																								\
+		emit(&stepper, e);																				\
 	}																									\
 	else if (stepper.sym == SYM_LO){ 																	\
 		nextsym(&stepper);																				\
 		if (stepper.sym!=SYM_IDENTIFIER)																\
 			exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token); 	\
-		emit_l(&stepper, _base_ | (regx << 8),LT_LO);													\
+		const Emitted e={																				\
+			.type=ET_IMM16,																				\
+			.tlabel=LT_LO,																				\
+			.value.imm16=_base_ | (regx << 8)															\
+		};																								\
+		emit(&stepper, e);																				\
 	}
 
 int c8_assemble(const char *text) {
@@ -575,7 +656,14 @@ int c8_assemble(const char *text) {
 					break;
 				if(stepper.sym != SYM_NUMBER)
 					exit_error("error:%d: byte value expected\n", stepper.linenum);
-				emit_b(&stepper,get_byte(&stepper));
+				Emitted e={
+					.type=ET_IMM8,
+					.value.imm8=get_byte(&stepper),
+					.tlabel=LT_NONE
+					
+				};
+
+				emit(&stepper,e);
 				nextsym(&stepper);
 			} while(stepper.sym == ',');
 		break;
@@ -587,7 +675,7 @@ int c8_assemble(const char *text) {
 				if(stepper.sym != SYM_NUMBER)
 					exit_error("error:%d: byte value expected\n", stepper.linenum);
 				uint16_t word = get_word(&stepper);
-				emit(&stepper, word);
+				emit_w(&stepper, word);
 				nextsym(&stepper);
 			} while(stepper.sym == ',');
 		break;
@@ -597,31 +685,49 @@ int c8_assemble(const char *text) {
 		break;
 		case SYM_INSTRUCTION:
 			if(!strcmp("cls", stepper.token))
-				emit(&stepper, 0x00E0);
+				emit_w(&stepper, 0x00E0);
 			else if(!strcmp("ret", stepper.token))
-				emit(&stepper, 0x00EE);
+				emit_w(&stepper, 0x00EE);
 			else if(!strcmp("jp", stepper.token)) {
 				nextsym(&stepper);
-				if(stepper.sym == SYM_IDENTIFIER)
-					emit_l(&stepper, 0x1000, LT_FULL);
+				if(stepper.sym == SYM_IDENTIFIER){
+					const Emitted e={
+						.type=ET_IMM16,
+						.tlabel=LT_FULL,
+						.value.imm16=0x1000
+					};
+					emit(&stepper, e);
+				}
 				else if(stepper.sym == SYM_REGISTER) {
 					if(strcmp(stepper.token, "v0"))
 						exit_error("error:%d: JP applies to V0 only\n", stepper.linenum);
 					expect(&stepper, ',');
-					if(stepper.sym == SYM_IDENTIFIER)
-						emit_l(&stepper, 0xB000, LT_FULL);
+					if(stepper.sym == SYM_IDENTIFIER){
+						const Emitted e={
+							.type=ET_IMM16,
+							.tlabel=LT_FULL,
+							.value.imm16=0xB000
+						};
+						emit(&stepper, e);
+					}
 					else
-						emit(&stepper, 0xB000 | get_addr(&stepper));
+						emit_w(&stepper, 0xB000 | get_addr(&stepper));
 				} else
-					emit(&stepper, 0x1000 | get_addr(&stepper));
+					emit_w(&stepper, 0x1000 | get_addr(&stepper));
 			} else if(!strcmp("call", stepper.token)) {
 				nextsym(&stepper);
-				if(stepper.sym == SYM_IDENTIFIER)
-					emit_l(&stepper, 0x2000, LT_FULL);
+				if(stepper.sym == SYM_IDENTIFIER){
+					const Emitted e={
+						.type=ET_IMM16,
+						.tlabel=LT_FULL,
+						.value.imm16=0x2000
+					};
+					emit(&stepper, e);
+				}
 				else {
 					if(stepper.sym != SYM_NUMBER)
 						exit_error("error:%d: address expected", stepper.linenum);
-					emit(&stepper, 0x2000 | get_addr(&stepper));
+					emit_w(&stepper, 0x2000 | get_addr(&stepper));
 				}
 			} else if(!strcmp("se", stepper.token)) {
 				nextsym(&stepper);
@@ -630,7 +736,7 @@ int c8_assemble(const char *text) {
 				EMIT_IMMEDIATE_INSTRUCTION(0x3000)
 				else if(stepper.sym == SYM_REGISTER) {
 					int regy = get_register(&stepper);
-					emit(&stepper, 0x5000 | (regx << 8) | (regy << 4));
+					emit_w(&stepper, 0x5000 | (regx << 8) | (regy << 4));
 				} else
 					exit_error("error:%d: operand expected\n", stepper.linenum);
 			} else if(!strcmp("sne", stepper.token)) {
@@ -640,14 +746,14 @@ int c8_assemble(const char *text) {
 				EMIT_IMMEDIATE_INSTRUCTION(0x4000)
 				else if(stepper.sym == SYM_REGISTER) {
 					int regy = get_register(&stepper);
-					emit(&stepper, 0x9000 | (regx << 8) | (regy << 4));
+					emit_w(&stepper, 0x9000 | (regx << 8) | (regy << 4));
 				} else
 					exit_error("error:%d: operand expected\n", stepper.linenum);
 			} else if(!strcmp("add", stepper.token)) {
 				nextsym(&stepper);
 				if(stepper.sym == SYM_I) {
 					expect(&stepper, ',');
-					emit(&stepper, 0xF01E | (get_register(&stepper) << 8));
+					emit_w(&stepper, 0xF01E | (get_register(&stepper) << 8));
 				} else {
 					int regx = get_register(&stepper);
 					expect(&stepper, ',');
@@ -655,7 +761,7 @@ int c8_assemble(const char *text) {
 					EMIT_IMMEDIATE_INSTRUCTION(0x7000)
 					else if(stepper.sym == SYM_REGISTER) {
 						int regy = get_register(&stepper);
-						emit(&stepper, 0x8004 | (regx << 8) | (regy << 4));
+						emit_w(&stepper, 0x8004 | (regx << 8) | (regy << 4));
 					} else
 						exit_error("error:%d: operand expected\n", stepper.linenum);
 				}
@@ -663,35 +769,40 @@ int c8_assemble(const char *text) {
 				nextsym(&stepper);
 				if(stepper.sym == SYM_I) {
 					expect(&stepper, ',');
-					if(stepper.sym == SYM_IDENTIFIER)
-						emit_l(&stepper, 0xA000, LT_FULL);
-					else
-						emit(&stepper, 0xA000 | get_addr(&stepper));
+					if(stepper.sym == SYM_IDENTIFIER){
+						const Emitted e={
+							.type=ET_IMM16,
+							.tlabel=LT_FULL,
+							.value.imm16=0xA000
+						};
+						emit(&stepper, e);
+					} else
+						emit_w(&stepper, 0xA000 | get_addr(&stepper));
 				} else if(stepper.sym == SYM_DT) {
 					expect(&stepper, ',');
-					emit(&stepper, 0xF015 | (get_register(&stepper) << 8));
+					emit_w(&stepper, 0xF015 | (get_register(&stepper) << 8));
 				} else if(stepper.sym == SYM_ST) {
 					expect(&stepper, ',');
-					emit(&stepper, 0xF018 | (get_register(&stepper) << 8));
+					emit_w(&stepper, 0xF018 | (get_register(&stepper) << 8));
 				} else if(stepper.sym == SYM_F) {
 					expect(&stepper, ',');
-					emit(&stepper, 0xF029 | (get_register(&stepper) << 8));
+					emit_w(&stepper, 0xF029 | (get_register(&stepper) << 8));
 				} else if(stepper.sym == SYM_B) {
 					expect(&stepper, ',');
-					emit(&stepper, 0xF033 | (get_register(&stepper) << 8));
+					emit_w(&stepper, 0xF033 | (get_register(&stepper) << 8));
 				} else if(stepper.sym == '[') {
 					if(nextsym(&stepper) != SYM_I || nextsym(&stepper) != ']')
 						exit_error("error:%d: [I] expected\n", stepper.linenum);
 					if(nextsym(&stepper) != ',')
 						exit_error("error:%d: ',' expected\n", stepper.linenum);
 					nextsym(&stepper);
-					emit(&stepper, 0xF055 | (get_register(&stepper) << 8));
+					emit_w(&stepper, 0xF055 | (get_register(&stepper) << 8));
 				} else if(stepper.sym == SYM_HF) {
 					expect(&stepper, ',');
-					emit(&stepper, 0xF030 | (get_register(&stepper) << 8));
+					emit_w(&stepper, 0xF030 | (get_register(&stepper) << 8));
 				} else if(stepper.sym == SYM_R) {
 					expect(&stepper, ',');
-					emit(&stepper, 0xF075 | (get_register(&stepper) << 8));
+					emit_w(&stepper, 0xF075 | (get_register(&stepper) << 8));
 				} else {
 					int regx = get_register(&stepper);
 					expect(&stepper, ',');
@@ -699,18 +810,18 @@ int c8_assemble(const char *text) {
 					EMIT_IMMEDIATE_INSTRUCTION(0x6000)
 					else if(stepper.sym == SYM_REGISTER) {
 						int regy = get_register(&stepper);
-						emit(&stepper, 0x8000 | (regx << 8) | (regy << 4));
+						emit_w(&stepper, 0x8000 | (regx << 8) | (regy << 4));
 					} else if(stepper.sym == SYM_DT)
-						emit(&stepper, 0xF007 | (regx << 8));
+						emit_w(&stepper, 0xF007 | (regx << 8));
 					else if(stepper.sym == SYM_K)
-						emit(&stepper, 0xF00A | (regx << 8));
+						emit_w(&stepper, 0xF00A | (regx << 8));
 
 					else if(stepper.sym == '[') {
 						if(nextsym(&stepper) != SYM_I || nextsym(&stepper) != ']')
 							exit_error("error:%d: [I] expected\n", stepper.linenum);
-						emit(&stepper, 0xF065 | (regx << 8));
+						emit_w(&stepper, 0xF065 | (regx << 8));
 					} else if(stepper.sym == SYM_R) {
-						emit(&stepper, 0xF085 | (regx << 8));
+						emit_w(&stepper, 0xF085 | (regx << 8));
 					} else
 						exit_error("error:%d: operand expected, found %s[%d]\n", stepper.linenum, stepper.token, stepper.sym);
 				}
@@ -719,25 +830,25 @@ int c8_assemble(const char *text) {
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
 				int regy = get_register(&stepper);
-				emit(&stepper, 0x8001 | (regx << 8) | (regy << 4));
+				emit_w(&stepper, 0x8001 | (regx << 8) | (regy << 4));
 			} else if(!strcmp("and", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
 				int regy = get_register(&stepper);
-				emit(&stepper, 0x8002 | (regx << 8) | (regy << 4));
+				emit_w(&stepper, 0x8002 | (regx << 8) | (regy << 4));
 			} else if(!strcmp("xor", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
 				int regy = get_register(&stepper);
-				emit(&stepper, 0x8003 | (regx << 8) | (regy << 4));
+				emit_w(&stepper, 0x8003 | (regx << 8) | (regy << 4));
 			} else if(!strcmp("sub", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
 				int regy = get_register(&stepper);
-				emit(&stepper, 0x8005 | (regx << 8) | (regy << 4));
+				emit_w(&stepper, 0x8005 | (regx << 8) | (regy << 4));
 			} else if(!strcmp("shr", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
@@ -748,13 +859,13 @@ int c8_assemble(const char *text) {
 					regy = get_register(&stepper);
 				} else
 					stepper.in=stepper.last;
-				emit(&stepper, 0x8006 | (regx << 8) | (regy << 4));
+				emit_w(&stepper, 0x8006 | (regx << 8) | (regy << 4));
 			} else if(!strcmp("subn", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
 				int regy = get_register(&stepper);
-				emit(&stepper, 0x8007 | (regx << 8) | (regy << 4));
+				emit_w(&stepper, 0x8007 | (regx << 8) | (regy << 4));
 			} else if(!strcmp("shl", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
@@ -765,7 +876,7 @@ int c8_assemble(const char *text) {
 					regy = get_register(&stepper);
 				} else
 					stepper.in=stepper.last;
-				emit(&stepper, 0x800E | (regx << 8) | (regy << 4));
+				emit_w(&stepper, 0x800E | (regx << 8) | (regy << 4));
 			} else if(!strcmp("rnd", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
@@ -781,32 +892,32 @@ int c8_assemble(const char *text) {
 				int nib = get_byte(&stepper);
 				if(nib < 0 || nib > 0xF)
 					exit_error("error:%d: invalid value %d\n", stepper.linenum, nib);
-				emit(&stepper, 0xD000 | (regx << 8) | (regy << 4) | nib);
+				emit_w(&stepper, 0xD000 | (regx << 8) | (regy << 4) | nib);
 			} else if(!strcmp("skp", stepper.token)) {
 				nextsym(&stepper);
-				emit(&stepper, 0xE09E | (get_register(&stepper) << 8));
+				emit_w(&stepper, 0xE09E | (get_register(&stepper) << 8));
 			} else if(!strcmp("sknp", stepper.token)) {
 				nextsym(&stepper);
-				emit(&stepper, 0xE0A1 | (get_register(&stepper) << 8));
+				emit_w(&stepper, 0xE0A1 | (get_register(&stepper) << 8));
 			} else if(!strcmp("scd", stepper.token)) {
 				nextsym(&stepper);
 				int nib = get_byte(&stepper);
 				if(nib < 0 || nib > 0xF)
 					exit_error("error:%d: invalid value %d\n", stepper.linenum, nib);
-				emit(&stepper, 0x00C0 | nib);
+				emit_w(&stepper, 0x00C0 | nib);
 			} else if(!strcmp("scr", stepper.token)) {
-				emit(&stepper, 0x00FB);
+				emit_w(&stepper, 0x00FB);
 			} else if(!strcmp("scl", stepper.token)) {
-				emit(&stepper, 0x00FC);
+				emit_w(&stepper, 0x00FC);
 			} else if(!strcmp("exit", stepper.token)) {
-				emit(&stepper, 0x00FD);
+				emit_w(&stepper, 0x00FD);
 			} else if(!strcmp("low", stepper.token)) {
-				emit(&stepper, 0x00FE);
+				emit_w(&stepper, 0x00FE);
 			} else if(!strcmp("high", stepper.token)) {
-				emit(&stepper, 0x00FF);
+				emit_w(&stepper, 0x00FF);
 			} else if(!strcmp("sys", stepper.token)) {
 				nextsym(&stepper);
-				emit(&stepper, 0x0000 | get_addr(&stepper));
+				emit_w(&stepper, 0x0000 | get_addr(&stepper));
 			}
 
 			nextsym(&stepper);
@@ -835,6 +946,8 @@ int c8_assemble(const char *text) {
 						break;
 						case LT_LO:
 						program.bytes[i].byte = lookup[j].addr & 0xFF;
+						case LT_NONE:
+						/*to prevent the compiler from complaining*/
 						break;
 
 					}
