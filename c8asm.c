@@ -577,32 +577,35 @@ static int get_word(const Stepper * stepper) {
 	return a;
 }
 
-#define EMIT_IMMEDIATE_INSTRUCTION(_base_)																\
-	if(stepper.sym == SYM_NUMBER)																		\
-		emit_w(&stepper, _base_ | (regx << 8) | get_byte(&stepper));									\
-	else if (stepper.sym == SYM_HI){																	\
-		nextsym(&stepper);																				\
-		if (stepper.sym!=SYM_IDENTIFIER) 																\
-			exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token);	\
-		const Emitted e={																				\
-			.type=ET_IMM16,																				\
-			.tlabel=LT_HI,																				\
-			.value.imm16=_base_ | (regx << 8)															\
-		};																								\
-		emit(&stepper, e);																				\
-	}																									\
-	else if (stepper.sym == SYM_LO){ 																	\
-		nextsym(&stepper);																				\
-		if (stepper.sym!=SYM_IDENTIFIER)																\
-			exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token); 	\
-		const Emitted e={																				\
-			.type=ET_IMM16,																				\
-			.tlabel=LT_LO,																				\
-			.value.imm16=_base_ | (regx << 8)															\
-		};																								\
-		emit(&stepper, e);																				\
+bool emit_immediate_instruction(Stepper * stepper, uint16_t base, uint8_t regx){
+	if(stepper->sym == SYM_NUMBER){
+		emit_w(stepper, (base) | (regx << 8) | get_byte(stepper));
+		return true;
+	} else if (stepper->sym == SYM_HI){
+		nextsym(stepper);
+		if (stepper->sym!=SYM_IDENTIFIER)
+			exit_error("error:%d: identifier expected, found %s\n", stepper->linenum, stepper->token);
+		const Emitted e={
+			.type=ET_IMM16,
+			.tlabel=LT_HI,
+			.value.imm16=(base) | (regx << 8)
+		};
+		emit(stepper, e);
+		return true;
 	}
-
+	else if (stepper->sym == SYM_LO){
+		nextsym(stepper);
+		if (stepper->sym!=SYM_IDENTIFIER)
+			exit_error("error:%d: identifier expected, found %s\n", stepper->linenum, stepper->token); 
+		const Emitted e={
+			.type=ET_IMM16,
+			.tlabel=LT_LO,
+			.value.imm16=(base) | (regx << 8)
+		};
+		emit(stepper, e);
+		return true;
+	} else return false;
+}
 int c8_assemble(const char *text) {
 
 	static Stepper stepper;
@@ -733,7 +736,7 @@ int c8_assemble(const char *text) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
-				EMIT_IMMEDIATE_INSTRUCTION(0x3000)
+				if(emit_immediate_instruction(&stepper, 0x3000,regx));
 				else if(stepper.sym == SYM_REGISTER) {
 					int regy = get_register(&stepper);
 					emit_w(&stepper, 0x5000 | (regx << 8) | (regy << 4));
@@ -743,7 +746,7 @@ int c8_assemble(const char *text) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
-				EMIT_IMMEDIATE_INSTRUCTION(0x4000)
+				if(emit_immediate_instruction(&stepper, 0x4000,regx));
 				else if(stepper.sym == SYM_REGISTER) {
 					int regy = get_register(&stepper);
 					emit_w(&stepper, 0x9000 | (regx << 8) | (regy << 4));
@@ -758,7 +761,7 @@ int c8_assemble(const char *text) {
 					int regx = get_register(&stepper);
 					expect(&stepper, ',');
 					
-					EMIT_IMMEDIATE_INSTRUCTION(0x7000)
+					if(emit_immediate_instruction(&stepper,0x7000,regx));
 					else if(stepper.sym == SYM_REGISTER) {
 						int regy = get_register(&stepper);
 						emit_w(&stepper, 0x8004 | (regx << 8) | (regy << 4));
@@ -807,7 +810,7 @@ int c8_assemble(const char *text) {
 					int regx = get_register(&stepper);
 					expect(&stepper, ',');
 					
-					EMIT_IMMEDIATE_INSTRUCTION(0x6000)
+					if(emit_immediate_instruction(&stepper,0x6000,regx));
 					else if(stepper.sym == SYM_REGISTER) {
 						int regy = get_register(&stepper);
 						emit_w(&stepper, 0x8000 | (regx << 8) | (regy << 4));
@@ -881,7 +884,7 @@ int c8_assemble(const char *text) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
-				EMIT_IMMEDIATE_INSTRUCTION(0xC000)
+				if(emit_immediate_instruction(&stepper,0xC000,regx));
 				else exit_error("error:%d: operand expected\n", stepper.linenum);
 			}  else if(!strcmp("drw", stepper.token)) {
 				nextsym(&stepper);
