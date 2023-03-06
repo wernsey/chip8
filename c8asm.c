@@ -166,10 +166,10 @@ static long int evaluate_arithmetic_expression(const char ** expression, char se
 			if ((*expression)[1] == '('){
 				if (**expression == '-'){
 					(*expression)+=2;
-					high_prec_value -= evaluate_arithmetic_expression(expression, ')');
+					high_prec_value = evaluate_arithmetic_expression(expression, ')');
 				 } else if (**expression == '+'){
 					(*expression)+=2;
-					high_prec_value += evaluate_arithmetic_expression(expression, ')');
+					high_prec_value = evaluate_arithmetic_expression(expression, ')');
 
 				 }
 				else	
@@ -194,11 +194,9 @@ static long int evaluate_arithmetic_expression(const char ** expression, char se
 					divisor = evaluate_arithmetic_expression(expression, ')');
 				} else 
 					divisor = parse_int(expression);
-				if (high_prec_value == 0){
-					high_prec_value=divisor;
-				} else if (divisor == 0 ){
+				if (divisor == 0){
 						exit_error("Divide by 0\n");
-				} else {	
+				} else {
 					high_prec_value /= divisor;
 				}
 			} else if (**expression == '('){
