@@ -127,24 +127,24 @@ static void exit_error(const char *msg, ...) {
 }
 
 static int get_base(const char * a){
-	char first_char = *a;
-	if (isdigit(first_char) || first_char == '-' || first_char == '+')
+	if (isdigit(*a) )
 		return 10;
-	 else if (first_char == '#') 
+	else if ((*a == '-' || *a == '+') && isdigit(a[1]))
+		return 10;
+	else if (*a == '#' && isxdigit(a[1])) 
 		return 16;
-	 else if (first_char == '%') 
+	 else if (*a == '%' && (a[1] == '0' || a[1] == '1')) 
 	 	return 2;
-	else if (first_char == '(')
+	else if (*a == '(')
 		return -1;
 	else 
 		return 0;
 }
 
-static long int parse_int(const char ** expression){
-	//char * ptr = *expression;
+static long int parse_int(const char ** expression,const int linenum){
 	int base = get_base(*expression);
 	if(base <= 0) 
-		exit_error("Invalid Immediate\n");
+		exit_error("error%d: Invalid Immediate\n", linenum);
 	if (base!=10)
 		(*expression)++;
 	return strtol(*expression, expression, base);
@@ -152,66 +152,118 @@ static long int parse_int(const char ** expression){
 	
 	
 }
-
-
-static long int evaluate_arithmetic_expression(const char ** expression, char sentinel){
-	long int high_prec_value=0;
-	long int low_prec_value=0;
-	/* Double check first char */
-	if (get_base(*expression)==0)
-		exit_error("Invalid Arithmetic Expression\n");
-	while (**expression != sentinel){
-		if (get_base(*expression)>0){
-			low_prec_value+=high_prec_value;
-			if ((*expression)[1] == '('){
-				if (**expression == '-'){
-					(*expression)+=2;
-					high_prec_value = evaluate_arithmetic_expression(expression, ')');
-				 } else if (**expression == '+'){
-					(*expression)+=2;
-					high_prec_value = evaluate_arithmetic_expression(expression, ')');
-
-				 }
-				else	
-					exit_error("Invalid Arithmetic Expression\n");
-
-			} else 
-				high_prec_value=parse_int(expression);
-		} else {
-			if (**expression == '*') {
-				(*expression)++;
-				if (**expression == '('){
-					(*expression)++;
-					high_prec_value *= evaluate_arithmetic_expression(expression, ')');
-				}
-				 else 
-					high_prec_value *= parse_int(expression);
-			} else if (**expression == '/') {
-				(*expression)++;
-				long int divisor;
-				if (**expression== '('){
-					(*expression)++;
-					divisor = evaluate_arithmetic_expression(expression, ')');
-				} else 
-					divisor = parse_int(expression);
-				if (divisor == 0){
-						exit_error("Divide by 0\n");
-				} else {
-					high_prec_value /= divisor;
-				}
-			} else if (**expression == '('){
-				(*expression)++;
-				high_prec_value = evaluate_arithmetic_expression(expression, ')');
-
-			} else {
-				return low_prec_value+high_prec_value;
-			}
-			
-		}
+static int get_precedence(const char c){
+	switch (c){
+		case '#':
+		case '%':
+		case '-':
+		case '+':
+		case '0'...'9':
+			return 1;
+		case '*':
+		case '/':
+			return 2;
+		default:
+			return 0;
 	}
-	(*expression)++;
-	return low_prec_value+high_prec_value;
 }
+#define STACK_HEIGHT 64
+static long int apply_op(const long int l_op, const char op, const long int r_op, const int linenum){
+	switch (op)
+	{
+	case '+':
+		return l_op+r_op;
+	case '-':
+		return l_op-r_op;
+	case '*': 
+		return l_op*r_op;
+	case '/':
+		return l_op/r_op;
+
+
+	
+	default:
+		exit_error("error%d: Invalid Arithmetic Expression\n",linenum);
+	}
+	/*unreachable*/
+	return -1;
+
+}
+static long int evaluate_arithmetic_expression(const char ** expression, char sentinel, const int linenum){
+
+	struct {char stack[STACK_HEIGHT]; char *top;} operators; operators.top=operators.stack-1;
+	struct {long int stack[STACK_HEIGHT]; long int *top;} figures; 
+	*figures.stack=0;figures.top=figures.stack;
+	int prec;
+	bool is_prev_figure = true;
+	bool is_first_char_of_clause = true;
+	while (**expression != sentinel){
+		if (**expression == ' '){
+			(*expression)++;
+			continue;
+		} else if(**expression == '(') {
+			//if it's the first char I want to make sure it doesn't try to "bracket" the initial 0 
+			if(is_first_char_of_clause) *(++operators.top)='+'; 
+			*(++operators.top)=**expression;
+			*(++figures.top)=0;
+			is_prev_figure=true;
+			(*expression)++;
+			is_first_char_of_clause=true;
+		} else if(**expression == ')') {
+            while((*operators.top) != '(')
+            {
+				if (operators.top<operators.stack)
+					exit_error("error%d: Unbalanced Brackets\n", linenum);
+                const long int r_op = *(figures.top--);
+                const long int l_op = *(figures.top--);
+                const char op = *(operators.top--);
+                *(++figures.top)=apply_op(l_op, op, r_op,linenum);
+            } 
+			is_prev_figure=true;
+			operators.top--;
+            (*expression)++;
+			is_first_char_of_clause=false;
+
+		} else if ((prec=get_precedence(**expression))>0){
+			while( 
+				figures.top>=figures.stack &&
+				is_prev_figure && 
+				get_precedence(*operators.top)>prec 
+			){
+				const long int r_op = *(figures.top--);
+				const long int l_op = *(figures.top--);
+				const char op = *(operators.top--);
+				*(++figures.top) = apply_op(l_op, op, r_op,linenum);
+			}
+			if (get_base(*expression)>0){
+				if(is_prev_figure) {
+					*(++operators.top)='+';
+				}
+				*(++figures.top)=parse_int(expression, linenum); 
+				is_prev_figure=true;
+			} else {
+				if (is_first_char_of_clause) 
+					exit_error("error%d: Invalid Arithmetic Expression\n", linenum);
+				*(++operators.top)=(**expression);
+				(*expression)++;
+				is_prev_figure=false;
+
+			} 
+			is_first_char_of_clause=false;
+		} else break;
+	}
+	if (**expression == sentinel) (*expression)++;
+
+	while(operators.top>=operators.stack){
+		const long int r_op = *(figures.top--);
+		const long int l_op = *(figures.top--);
+		const char op = *(operators.top--);
+		*(++figures.top)=apply_op(l_op, op, r_op,linenum);
+    }
+	return *figures.stack;
+
+}
+
 static void emit_b(const Stepper * stepper, uint8_t byte) {
 	if(program.next_instr >= TOTAL_RAM)
 		exit_error("error: program too large\n");
@@ -348,7 +400,7 @@ scan_start:
 			}
 		}
 	} else if(get_base(stepper->in)) {
-		sprintf(stepper->token,"%ld",evaluate_arithmetic_expression(&stepper->in, 0xff));
+		sprintf(stepper->token,"%ld",evaluate_arithmetic_expression(&stepper->in, 0xff, stepper->linenum));
 		stepper->sym=SYM_NUMBER;
 	} else {
 		stepper->token[0] = *stepper->in;
@@ -417,7 +469,7 @@ static int get_word(const Stepper * stepper) {
 		nextsym(&stepper);																				\
 		if (stepper.sym!=SYM_IDENTIFIER)																\
 			exit_error("error:%d: identifier expected, found %s\n", stepper.linenum, stepper.token); 	\
-		emit_l(&stepper, _base_ | (regx << 8),LT_LO);													\ 
+		emit_l(&stepper, _base_ | (regx << 8),LT_LO);													\
 	}
 
 int c8_assemble(const char *text) {
