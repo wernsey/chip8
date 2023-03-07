@@ -224,43 +224,7 @@ static int parse_int(const char ** expression,const int linenum){
 		(*expression)++;
 	return (int)strtol(*expression, expression, base);	
 }
-/*
-static void copy_arithmetic_expression(char * buffer, const char ** in){
-	while(1){
-		if (**in == ' '){
-			(*in)++;
-			continue;
-		} else if (get_base(*in)>0){
-			const char * new=*in;
-			parse_int(&new, 0);
-			memcpy(buffer, *in, new-(*in));
-			buffer+=new-(*in);
-			*in=new;
-		} else if (
-			is_unary_operator(*in) || get_precedence(*in) || 
-			**in == '(' || **in == ')'
-			){
-				*(buffer++)=*((*in)++);
-				if (**in == '<' || **in == '>') *(buffer++)=*((*in)++);
 
-		} else {
-			bool success = false;
-			for(int i = 0; i < n_lookup; i++) {
-				if(!strcmp(lookup[i].label, *in)) {
-					size_t bytes_to_copy = strlen(lookup[i].label);
-					memcpy(buffer, *in,bytes_to_copy);
-					buffer+=bytes_to_copy;
-					*in+=bytes_to_copy;
-					success = true;
-					break;
-				}
-			}
-			if(!success) break;
-		}
-	}
-	*buffer='\0';
-}
-*/
 
 
 static void copy_arithmetic_expression(char * buffer, const char ** in){
@@ -440,44 +404,7 @@ static int evaluate_arithmetic_expression(const char * expression, const int lin
 	return *figures.stack;
 
 }
-/*
-static void emit_b(const Stepper * stepper, uint8_t byte) {
-	if(program.next_instr >= TOTAL_RAM)
-		exit_error("error: program too large\n");
-	program.bytes[program.next_instr].linenum = stepper->linenum;
-	program.bytes[program.next_instr++].byte = byte;
-	if(program.next_instr > program.max_instr)
-		program.max_instr = program.next_instr;
-}
 
-static inline void emit(const Stepper * stepper, uint16_t inst) {
-	emit_b(stepper, inst >> 8);
-	emit_b(stepper, inst & 0xFF);
-}
-static void emit_lb(const Stepper * stepper, LABEL_TYPE tlabel){
-	if(program.next_instr >= TOTAL_RAM)
-		exit_error("error: program too large\n");
-	program.bytes[program.next_instr].linenum = stepper->linenum;
-	strcpy(program.bytes[program.next_instr].label, stepper->token);
-	program.bytes[program.next_instr].tlabel=tlabel;
-	program.bytes[program.next_instr++].byte = 0;
-	if(program.next_instr > program.max_instr)
-		program.max_instr = program.next_instr;
-}
-static void emit_l(const Stepper * stepper, uint16_t inst, LABEL_TYPE tlabel){
-	if (tlabel == LT_NONE){
-		exit_error("emit_l called on NONE label\n");
-	} else if (tlabel == LT_FULL){
-		strcpy(program.bytes[program.next_instr].label, stepper->token);
-		program.bytes[program.next_instr].tlabel=LT_FULL;
-		emit(stepper, inst & 0xf000);
-	} else {
-		emit_b(stepper, inst>>8);
-		emit_lb(stepper, tlabel);
-	}
-}
-
-*/
 static void emit_b(const Stepper * stepper, uint8_t byte, const EMITTED_TYPE type) {
 	if(program.next_instr >= TOTAL_RAM)
 		exit_error("error: program too large\n");
