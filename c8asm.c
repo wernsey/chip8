@@ -401,9 +401,14 @@ static int evaluate_arithmetic_expression(const char * expression, const int lin
 			is_first_char_of_clause=false;
 		} else {
 			bool success = false;
+			char buffer[64];
+			char * bufptr=buffer;
+			while ((*expression) && (!ispunct(*expression) || *expression == '_'))
+				*bufptr++=*expression++;
+			*bufptr='\0';
 			for(int i = 0; i < n_lookup; i++) {
-				size_t len = strlen(lookup[i].label);
-				if(!strncmp(lookup[i].label, expression, len)) {
+				//size_t len = strlen(lookup[i].label);
+				if(!strcmp(lookup[i].label, buffer)) {
 					if(is_prev_figure) {
 						*(++operators.top)='+';
 					}
@@ -412,7 +417,7 @@ static int evaluate_arithmetic_expression(const char * expression, const int lin
 						(*figures.top) = apply_unary_op(*operators.top, *figures.top, linenum);
 						operators.top--;
 					}
-					expression+=len;
+					//expression+=len;
 					success=true;
 					is_first_char_of_clause=false;
 					is_prev_figure=true;
@@ -989,7 +994,7 @@ int c8_assemble(const char *text) {
 			result = get_num(program.bytes[i].expression, (program.bytes[i].type & BITNESS_BITMASK)+1,program.bytes[i].linenum);
 
 		}
-		if (program.bytes[i].type & EMIT8_BITMASK) {
+		if ((program.bytes[i].type != CONTINUED) && (program.bytes[i].type & EMIT8_BITMASK)) {
 			program.bytes[i].byte |= result &0xff;
 		} else {
 			program.bytes[i].byte |= result >> 8;
