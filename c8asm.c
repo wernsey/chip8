@@ -76,6 +76,10 @@ typedef struct {
 	int linenum;
 	char token[TOK_SIZE];
 } Stepper;
+
+#define BITNESS_BITMASK 0b0011
+#define EXPRESSION_BITMASK 0b0100
+#define EMIT8_BITMASK 0b1000
 typedef enum {
 	CONTINUED=0,
 	ET_IMM4=0b10000,
@@ -91,9 +95,6 @@ typedef enum {
 	ET_EXP12=0b10110,
 	ET_EXP16=0b10111
 } EMITTED_TYPE;
-#define BITNESS_BITMASK 0b0011
-#define EXPRESSION_BITMASK 0b0100
-#define EMIT8_BITMASK 0b1000
 /*
 typedef enum {
 	LT_NONE,
@@ -436,7 +437,7 @@ static inline void emit_w(const Stepper * stepper, uint16_t word){
 }
 static inline void emit_e(const Stepper * stepper, uint16_t word, size_t nybble_count){
 	const Emitted e = (Emitted){
-		.type=0b10100 | (nybble_count-1),
+		.type=0b10000 | EXPRESSION_BITMASK | (nybble_count-1),
 		.value=word
 	};
 	emit(stepper, e);
