@@ -293,7 +293,7 @@ static int evaluate_arithmetic_expression(const char * expression, const int lin
 	*figures.stack=0;figures.top=figures.stack;
 	bool is_prev_figure = true;
 	bool is_first_char_of_clause = true;
-	while (1){
+	while (*expression){
 		int prec;
 		int base;
 
@@ -382,14 +382,13 @@ static int evaluate_arithmetic_expression(const char * expression, const int lin
 						(*figures.top) = apply_unary_op(*operators.top, *figures.top, linenum);
 						operators.top--;
 					}
-					//expression+=len;
 					success=true;
 					is_first_char_of_clause=false;
 					is_prev_figure=true;
 					break;
 				}
 			}
-			if(!success) break;
+			if(!success) exit_error("error%d: Invalid Identifier %s in arithmetic expression\n", linenum,buffer);
 		}
 	}
 
