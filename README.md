@@ -172,11 +172,12 @@ and there were some discrepancies. This is how I handled them:
 * [11] Octo SuperChip document, John Earnest,
   <https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/SuperChip.md>
 * [12] <http://www.codeslinger.co.uk/pages/projects/chip8/primitive.html>
+* https://github.com/mattmikolay/chip-8/wiki/CHIP%E2%80%908-Technical-Reference
+* https://github.com/corax89/chip8-test-rom
 
 ## License
 
-This code is licensed under the [Apache license version
-2](http://www.apache.org/licenses/LICENSE-2.0):
+This code is licensed under the [Apache license version 2](http://www.apache.org/licenses/LICENSE-2.0):
 
     Copyright 2015-2016 Werner Stoop
     
