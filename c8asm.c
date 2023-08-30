@@ -165,7 +165,7 @@ static bool is_arith(char c){
 		case '<':
 		case '>':
 		case '~':
-			return true; 
+			return true;
 		default:
 			return false;
 	}
@@ -175,8 +175,8 @@ static bool is_unary_operator(const  char * exp){
 		return true;
 	else if (*exp=='~')
 		return true;
-	else 
-		return false;	
+	else
+		return false;
 }
 static int get_precedence(const char * expr){
 	char c = *expr;
@@ -210,25 +210,23 @@ static int get_base(const char * a){
 		return 10;
 	else if ((*a == '-' || *a == '+') && isdigit(a[1]))
 		return 10;
-	else if (*a == '#' && isxdigit(a[1])) 
+	else if (*a == '#' && isxdigit(a[1]))
 		return 16;
-	 else if (*a == '%' && (a[1] == '0' || a[1] == '1')) 
+	 else if (*a == '%' && (a[1] == '0' || a[1] == '1'))
 	 	return 2;
 	else if (*a == '(')
 		return -1;
-	else 
+	else
 		return 0;
 }
-static int parse_int(const char ** expression,const int linenum){	
+static int parse_int(char **expression, const int linenum){
 	int base = get_base(*expression);
-	if(base <= 0) 
-		exit_error("error%d: Invalid Immediate\n", linenum);
+	if(base <= 0)
+		exit_error("error:%d: Invalid Immediate\n", linenum);
 	if (base!=10)
 		(*expression)++;
-	return (int)strtol(*expression, expression, base);	
+	return (int)strtol(*expression, expression, base);
 }
-
-
 
 static void copy_arithmetic_expression(char * buffer, const char ** in){
 
@@ -251,7 +249,7 @@ static  int apply_unary_op (const unsigned char op, const  int val, const int li
 		return -val;
 	case '~' | 0x80:
 		return ~val;
-	
+
 	default:
 		exit_error("error%d: Invalid Arithmetic Expression\n",linenum);
 	}
@@ -267,7 +265,7 @@ static  int apply_binary_op(const  int l_op, const char op, const  int r_op, con
 		return l_op+r_op;
 	case '-':
 		return l_op-r_op;
-	case '*': 
+	case '*':
 		return l_op*r_op;
 	case '/':
 		return l_op/r_op;
@@ -288,23 +286,38 @@ static  int apply_binary_op(const  int l_op, const char op, const  int r_op, con
 	return -1;
 
 }
-static int evaluate_arithmetic_expression(const char * expression, const int linenum){
 
-	struct {unsigned char stack[STACK_HEIGHT]; unsigned char * top;} operators; operators.top=operators.stack-1;
-	struct {int stack[STACK_HEIGHT]; int *top;} figures; 
-	*figures.stack=0;figures.top=figures.stack;
+static int evaluate_arithmetic_expression(char *expression, const int linenum){
+
+	struct {
+		unsigned char stack[STACK_HEIGHT];
+		unsigned char *top;
+	} operators;
+// GCC doesn't like that `operators.top` points to before `operators.stack`
+// but upon reviewing it, I decided it is fine.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
+	operators.top = operators.stack - 1;
+#pragma GCC diagnostic pop
+	struct {
+		int stack[STACK_HEIGHT];
+		int *top;
+	} figures;
+
+	*figures.stack = 0;
+	figures.top = figures.stack;
 	bool is_prev_figure = true;
 	bool is_first_char_of_clause = true;
 	while (*expression){
 		int prec;
 		int base;
 
-		if (*expression == ' '){
+		if (strchr(" \t\r", *expression)) {
 			expression++;
 			continue;
 		} else if(*expression == '(') {
-			//if it's the first char I want to make sure it doesn't try to "bracket" the initial 0 
-			if(is_first_char_of_clause) *(++operators.top)='+'; 
+			//if it's the first char I want to make sure it doesn't try to "bracket" the initial 0
+			if(is_first_char_of_clause) *(++operators.top)='+';
 			*(++operators.top)=*expression;
 			*(++figures.top)=0;
 			is_prev_figure=true;
@@ -314,12 +327,12 @@ static int evaluate_arithmetic_expression(const char * expression, const int lin
 			while((*operators.top) != '(')
 			{
 				if (operators.top<operators.stack)
-					exit_error("error%d: Unbalanced Brackets\n", linenum);
+					exit_error("error:%d: Unbalanced Brackets\n", linenum);
 				const  int r_op = *(figures.top--);
 				const  int l_op = *(figures.top--);
 				const unsigned char op = *(operators.top--);
 				*(++figures.top)=apply_binary_op(l_op, op, r_op,linenum);
-			} 
+			}
 			is_prev_figure=true;
 			operators.top--;
 			expression++;
@@ -332,11 +345,11 @@ static int evaluate_arithmetic_expression(const char * expression, const int lin
 			is_first_char_of_clause=false;
 		} else if (((prec=get_precedence(expression))>0) | ((base=get_base(expression))>0)){
 			unsigned char operator_extended[2]={*operators.top,*operators.top};
-			while( 
+			while(
 				figures.top>=figures.stack &&
-				is_prev_figure && 
+				is_prev_figure &&
 				prec > 0 &&
-				get_precedence((char *)operator_extended)>prec 
+				get_precedence((char *)operator_extended)>prec
 			){
 				const  int r_op = *(figures.top--);
 				const  int l_op = *(figures.top--);
@@ -348,23 +361,23 @@ static int evaluate_arithmetic_expression(const char * expression, const int lin
 				if(is_prev_figure) {
 					*(++operators.top)='+';
 				}
-				*(++figures.top)=parse_int(&expression, linenum); 
+				*(++figures.top)=parse_int(&expression, linenum);
 				is_prev_figure=true;
 				if (*operators.top&0x80){
 					(*figures.top) = apply_unary_op(*operators.top, *figures.top, linenum);
 					operators.top--;
 				}
 
-				
+
 			} else {
-				if (is_first_char_of_clause) 
-					exit_error("error%d: Invalid Arithmetic Expression\n", linenum);
+				if (is_first_char_of_clause)
+					exit_error("error:%d: Invalid Arithmetic Expression\n", linenum);
 				*(++operators.top)=*expression;
 				expression++;
 				if (*expression=='>' || *expression=='<') expression++;
 				is_prev_figure=false;
 
-			} 
+			}
 			is_first_char_of_clause=false;
 		} else {
 			bool success = false;
@@ -379,7 +392,7 @@ static int evaluate_arithmetic_expression(const char * expression, const int lin
 					if(is_prev_figure) {
 						*(++operators.top)='+';
 					}
-					*(++figures.top)=lookup[i].addr; 
+					*(++figures.top)=lookup[i].addr;
 					if (*operators.top&0x80){
 						(*figures.top) = apply_unary_op(*operators.top, *figures.top, linenum);
 						operators.top--;
@@ -390,7 +403,7 @@ static int evaluate_arithmetic_expression(const char * expression, const int lin
 					break;
 				}
 			}
-			if(!success) exit_error("error%d: Invalid Identifier %s in arithmetic expression\n", linenum,buffer);
+			if(!success) exit_error("error:%d: Invalid Identifier %s in arithmetic expression\n", linenum, buffer);
 		}
 	}
 
@@ -412,7 +425,7 @@ static void emit_b(const Stepper * stepper, uint8_t byte, const EMITTED_TYPE typ
 		exit_error("error: program too large\n");
 	program.bytes[program.next_instr].linenum = stepper->linenum;
 	program.bytes[program.next_instr].type=type;
-	if (type&EXPRESSION_BITMASK) 
+	if (type&EXPRESSION_BITMASK)
 		strcpy(program.bytes[program.next_instr].expression, stepper->token);
 	program.bytes[program.next_instr++].byte = byte;
 	if(program.next_instr > program.max_instr)
@@ -420,7 +433,7 @@ static void emit_b(const Stepper * stepper, uint8_t byte, const EMITTED_TYPE typ
 }
 
 static void emit(const Stepper * stepper, const Emitted emitted){
-	if (emitted.type==CONTINUED) 
+	if (emitted.type==CONTINUED)
 		exit_error("Continued is reserved\n");
 	else if (emitted.type&EMIT8_BITMASK){
 		emit_b(stepper, emitted.value&0xff, emitted.type);
@@ -486,7 +499,7 @@ scan_start:
 			stepper->in++;
 		goto scan_start;
 	}
-	
+
 
 	if(isalpha(*stepper->in)) {
 		while(isalnum(*stepper->in) || *stepper->in == '_')
@@ -544,7 +557,7 @@ scan_start:
 						}
 					}
 				}
-				
+
 			}
 		}
 	} else if(is_arith(*stepper->in) ) {
@@ -564,9 +577,9 @@ scan_start:
 
 
 void expect(Stepper * stepper, int what) {
-	SYMBOL sym = nextsym(stepper); 
-	if(sym != what) 
-		exit_error("error:%d: '%c'%d expected\n", stepper->linenum, what,sym); 
+	SYMBOL sym = nextsym(stepper);
+	if(sym != what)
+		exit_error("error:%d: '%c'%d expected\n", stepper->linenum, what,sym);
 	nextsym(stepper);
 }
 
@@ -584,7 +597,7 @@ static int get_register(const Stepper * stepper) {
 	return reg;
 }
 
-static int get_num(const char * token, size_t nybble_count, const int linenum) {
+static int get_num(char *token, size_t nybble_count, const int linenum) {
 	int a = evaluate_arithmetic_expression(token, linenum);
 	int bound=1<<(4*nybble_count);
 	if(a < -(bound/2) || a > (bound-1)){
@@ -657,7 +670,7 @@ int c8_assemble(const char *text) {
 					.type=ET_EXP8_EMIT8,
 					.value=0
 
-					
+
 				};
 
 				emit(&stepper,e);
@@ -718,7 +731,7 @@ int c8_assemble(const char *text) {
 					.value=0x2000
 				};
 				emit(&stepper, e);
-				
+
 			} else if(!strcmp("se", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
@@ -931,7 +944,7 @@ int c8_assemble(const char *text) {
 		}
 
 
-		 
+
 
 		if(c8_verbose > 1) {
 			if(!(i & 0x01))
