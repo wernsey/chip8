@@ -154,10 +154,10 @@ void c8_step() {
 				c8_resolution(&col, &row);
 				col >>= 3;
 				for(y = 0; y < row; y++) {
-					for(x = 0; x < col - 1; x++) {
-						pixels[y * col + x] = (pixels[y * col + x] >> 4) | (pixels[y * col + x + 1] << 4);
+					for(x = col - 1; x > 0; x--) {
+						pixels[y * col + x] = (pixels[y * col + x] << 4) | (pixels[y * col + x - 1] >> 4);
 					}
-					pixels[y * col + x] >>= 4;
+					pixels[y * col] <<= 4;
 				}
 				screen_updated = 1;
 			} else if(opcode == 0x00FC) {
@@ -165,10 +165,10 @@ void c8_step() {
 				c8_resolution(&col, &row);
 				col >>= 3;
 				for(y = 0; y < row; y++) {
-					for(x = col - 1; x > 0; x--) {
-						pixels[y * col + x] = (pixels[y * col + x] << 4) | (pixels[y * col + x - 1] >> 4);
+					for(x = 0; x < col - 1; x++) {
+						pixels[y * col + x] = (pixels[y * col + x] >> 4) | (pixels[y * col + x + 1] << 4);
 					}
-					pixels[y * col] <<= 4;
+					pixels[y * col + x] >>= 4;
 				}
 				screen_updated = 1;
 			} else if(opcode == 0x00FD) {
