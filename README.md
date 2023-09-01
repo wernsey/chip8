@@ -38,7 +38,7 @@ This will assemble `file.asm` into a binary `file.c8h`. If the `-o` is not
 specified it will default to `a.c8h`.
 
 To use the disassembler, run the command
-	
+
     $ c8dasm a.ch8 > outfile.asm
 
 where `a.ch8` is the file you want to disassemble.
@@ -77,10 +77,10 @@ The implementations feature a rudimentary debugger: Press F5 to pause a running
 game. The program counter and the current instruction will be displayed at the
 bottom of the screen, along with the values of the 16 Vx registers. Press F6 to
 step through the program to the next instruction and F8 to resume the program.
-  
+
 The `Makefile` will build the SDL version by default, and build the GDI version
 under Windows.
-  
+
 ### SDL Implementation
 
 The SDL-based implementation is intended for portability. The files `pocadv.c`
@@ -172,24 +172,25 @@ and there were some discrepancies. This is how I handled them:
 * [11] Octo SuperChip document, John Earnest,
   <https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/SuperChip.md>
 * [12] <http://www.codeslinger.co.uk/pages/projects/chip8/primitive.html>
-* https://github.com/mattmikolay/chip-8/wiki/CHIP%E2%80%908-Technical-Reference
-* https://github.com/corax89/chip8-test-rom
+* <https://github.com/mattmikolay/chip-8/wiki/CHIP%E2%80%908-Technical-Reference>
+* <https://github.com/corax89/chip8-test-rom>
 
 ## License
 
 This code is licensed under the [Apache license version 2](http://www.apache.org/licenses/LICENSE-2.0):
 
+```
     Copyright 2015-2016 Werner Stoop
-    
+
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
     You may obtain a copy of the License at
-    
+
         http://www.apache.org/licenses/LICENSE-2.0
-    
+
     Unless required by applicable law or agreed to in writing, software
     distributed under the License is distributed on an "AS IS" BASIS,
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
-
+```

@@ -1,9 +1,111 @@
-/*
-CHIP8 assembler.
-Mostly based on the syntax of "Cowgod's Chip-8 Technical Reference v1.0",
-by Thomas P. Greene, http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
-Hexadecimal constants can be written as
-*/
+/**
+ *  CHIP8 assembler
+ * ==================
+ *
+ * ## Overview
+ *
+ * The syntax is mostly based on that of "Cowgod's Chip-8 Technical Reference v1.0",
+ * by Thomas P. Greene, <http://devernay.free.fr/hacks/chip8/C8TECH10.HTM>
+ *
+ * Semicolons `;` denote the start of a comment.
+ *
+ * Identifiers start with an alphabetic character, and are
+ * followed by zero or more alphanumeric digits or underscores.
+ *
+ * Identifiers are not case sensitive. Identifiers, labels and instruction
+ * Mnemonics can be written in upper or lower case. For example `sub`, `Sub` and
+ * `SUB` are all equivalent.
+ *
+ * There are a couple of reserved special identifiers:
+ *
+ * * `I` for the index register.
+ * * `DT` for the delay timer register.
+ * * `ST` for the sound timer register.
+ * * `K` for the key press register[^fake].
+ * * `F` for the address of fonts[^fake].
+ * * `B` for storing BCD values[^fake].
+ * * `HF`
+ * * `R`
+ *
+ * [^fake]: there isn't actually registers `K`, `F` and `B`, but they're used as in special syntax for [the `ld` instructions](#ld---load).
+ *
+ * These keywords are also reserved:
+ *
+ * * `define` to define new symbols
+ * * `offset` to control where in the ROM output is placed
+ * * `db` to write bytes to the ROM
+ * * `dw` to write 16-bit words to the ROM
+ *
+ * ### Notation
+ *
+ * In the purposes of this document:
+ *
+ * * `Vx`, `Vy` and `Vn` refer to any of the 16 Chip8 registers, `V0` through `VF`
+ * * `addr` refers to a 12-bit address in the Chip8 interpreter's RAM.
+ * * `nnn` refers to a 12-bit value.
+ * * `n` refers to a 4-bit nibble value.
+ * * `kk` is a byte value.
+ *
+ * Decimal literals are a sequence of the characters `0-9`, for example `254`.
+ *
+ * Binary literals start with `%` followed by several `0` or `1` symbols,
+ * for example `%11111110`.
+ *
+ * Hexadecimal literals start with a `#` followed by characters from
+ * `0-9`, `a-f` or `A-F`, for example `#FE` for 254.
+ *
+ * ## Summary
+ *
+ * | Chip8 Instruction  |  Mnemonic         | Description                                        |
+ * |--------------------|-------------------|----------------------------------------------------|
+ * |  0nnn              |   `sys nnn`       | System Call                                        |
+ * |  00E0              |   `cls`           | Clear Screen                                       |
+ * |  00EE              |   `ret`           | Return                                             |
+ * |  1nnn              |   `jp addr`       | Jump to `addr`                                     |
+ * |  Bnnn              |   `jp v0, addr`   | Jump to `v0 + addr`                                |
+ * |  2nnn              |   `call addr`     | Call routine at `addr`                             |
+ * |  3nkk              |   `se Vn kk`      | Skip if `Vn` equals `kk`                           |
+ * |  5xy0              |   `se Vx Vy`      | Skip if `Vn` equals `Vy`                           |
+ * |  4nkk              |   `sne Vn kk`     | Skip if `Vn` does not equal `kk`                   |
+ * |  9xy0              |   `sne Vx Vy`     | Skip if `Vn` does not equal `Vy`                   |
+ * |  Annn              |   `ld I, nnn`     | Loads `nnn` into register `I`                      |
+ * |  Fx07              |   `ld Vx, DT`     | Loads the delay timer into register `Vx`           |
+ * |  Fx15              |   `ld DT, Vx`     | Loads register `Vx` into the delay timer           |
+ * |  Fx18              |   `ld ST, Vx`     | Loads register `Vx` into the sound timer           |
+ * |  Fx29              |   `ld F, Vx`      | Load hex value of `Vx` into `I`                    |
+ * |  Fx33              |   `ld B, Vx`      | Load BCD value of `Vx` into `I`                    |
+ * |  Fx55              |   `ld [I], Vx`    | Save `V0` through `Vx` to the address in `I`       |
+ * |  Fx65              |   `ld Vx, [I]`    | Restores `V0` through `Vx` from the address in `I` |
+ * |  6xkk              |   `ld Vx, kk`     | Loads a literal value `kk` into `Vx`               |
+ * |  8xy0              |   `ld Vx, Vy`     | Loads register `Vy` into `Vx`                      |
+ * |  Fn0A              |   `ld Vn, K`      | loads a key pressed into `Vn`                      |
+ * |  Fx30[^super]      |   `ld HF, Vx`     | Loads register `Vx` into `I` as a large hex value  |
+ * |  Fx75[^super]      |   `ld R, Vx`      | Save `V0`-`Vx` ?                                   |
+ * |  Fx85[^super]      |   `ld Vx, R`      | Restore `V0`-`Vx` ?                                |
+ * |  7nkk              |   `add Vn, kk`    | Add `kk` to register `Vx`                          |
+ * |  8xy4              |   `add Vx, Vy`    | Add the value in `Vy` to register `Vx`             |
+ * |  Fn1E              |   `add I, Vn`     | Add the value in `Vn` to register `I`              |
+ * |  8xy1              |   `or Vx, Vy`     | Bitwise OR the value in `Vy` with register `Vx`    |
+ * |  8xy2              |   `and Vx, Vy`    | Bitwise AND the value in `Vy` with register `Vx`   |
+ * |  8xy3              |   `xor Vx, Vy`    | Bitwise XOR the value in `Vy` with register `Vx`   |
+ * |  8xy5              |   `xor Vx, Vy`    | Subtract the value in `Vy` from register `Vx`      |
+ * |  8xy6              |   `shr Vx [, Vy]` | Shift `Vx` to the right with the value in `Vy`     |
+ * |  8xy7              |   `subn Vx, Vy`   | Subtract the value in `Vy` from `Vx`, no carry     |
+ * |  8xyE              |   `shl Vx [, Vy]` | Shift `Vx` to the left with the value in `Vy`      |
+ * |  Cnkk              |   `rnd Vn, kk`    | random number AND `kk` into `Vn`                   |
+ * |  Dxyn              |   `drw Vx, Vy, n` | Draw a sprite of `n` rows at `Vx,Vy`               |
+ * |  En9E              |   `skp Vn`        | Skip if key in `Vn` pressed                        |
+ * |  EnA1              |   `sknp Vn`       | Skip if key in `Vn` not pressed                    |
+ * |  00Cn[^super]      |   `scd n`         | Scroll down `n` pixels                             |
+ * |  00FB[^super]      |   `scr`           | Scroll right                                       |
+ * |  00FC[^super]      |   `scl`           | Scroll Left                                        |
+ * |  00FD[^super]      |   `exit`          | Exits the SuperChip48 interpreter                  |
+ * |  00FE[^super]      |   `low`           | Low res mode                                       |
+ * |  00FF[^super]      |   `high`          | Enable 128x64 high-res mode                        |
+ *
+ * [^super]: Denotes a Super Chip48 instruction.
+ */
+
 /* CHIP-8 Assembler. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -97,12 +199,6 @@ typedef enum {
 	ET_EXP12=0b10110,
 	ET_EXP16=0b10111
 } EMITTED_TYPE;
-/*
-typedef enum {
-	LT_NONE,
-	LT_FULL
-
-} LABEL_TYPE; */
 
 typedef struct {
 	EMITTED_TYPE type;
@@ -116,7 +212,6 @@ static struct {
 		EMITTED_TYPE type;
 		int linenum;
 		char expression[TOK_SIZE];
-		//char label[TOK_SIZE];
 	} bytes[TOTAL_RAM];
 
 	uint16_t next_instr; /* Address of next instruction */
@@ -251,7 +346,7 @@ static  int apply_unary_op (const unsigned char op, const  int val, const int li
 		return ~val;
 
 	default:
-		exit_error("error%d: Invalid Arithmetic Expression\n",linenum);
+		exit_error("error:%d: Invalid Arithmetic Expression\n",linenum);
 	}
 	/*unreachable*/
 	return -1;
@@ -280,7 +375,7 @@ static  int apply_binary_op(const  int l_op, const char op, const  int r_op, con
 	case '>':
 		return l_op>>r_op;
 	default:
-		exit_error("error%d: Invalid Arithmetic Expression\n",linenum);
+		exit_error("error:%d: Invalid Arithmetic Expression\n",linenum);
 	}
 	/*unreachable*/
 	return -1;
@@ -423,23 +518,26 @@ static int evaluate_arithmetic_expression(char *expression, const int linenum){
 static void emit_b(const Stepper * stepper, uint8_t byte, const EMITTED_TYPE type) {
 	if(program.next_instr >= TOTAL_RAM)
 		exit_error("error: program too large\n");
+
 	program.bytes[program.next_instr].linenum = stepper->linenum;
 	program.bytes[program.next_instr].type=type;
-	if (type&EXPRESSION_BITMASK)
+
+	if (type & EXPRESSION_BITMASK)
 		strcpy(program.bytes[program.next_instr].expression, stepper->token);
+
 	program.bytes[program.next_instr++].byte = byte;
 	if(program.next_instr > program.max_instr)
 		program.max_instr = program.next_instr;
 }
 
 static void emit(const Stepper * stepper, const Emitted emitted){
-	if (emitted.type==CONTINUED)
+	if (emitted.type == CONTINUED)
 		exit_error("Continued is reserved\n");
-	else if (emitted.type&EMIT8_BITMASK){
-		emit_b(stepper, emitted.value&0xff, emitted.type);
+	else if (emitted.type & EMIT8_BITMASK) {
+		emit_b(stepper, emitted.value & 0xff, emitted.type);
 	} else {
-		emit_b(stepper, emitted.value>>8,emitted.type);
-		emit_b(stepper, emitted.value&0xff,CONTINUED);
+		emit_b(stepper, emitted.value >> 8, emitted.type);
+		emit_b(stepper, emitted.value & 0xff, CONTINUED);
 	}
 }
 static inline void emit_w(const Stepper * stepper, uint16_t word){
@@ -449,13 +547,14 @@ static inline void emit_w(const Stepper * stepper, uint16_t word){
 	};
 	emit(stepper, e);
 }
-static inline void emit_e(const Stepper * stepper, uint16_t word, size_t nybble_count){
-	const Emitted e = (Emitted){
-		.type=0b10000 | EXPRESSION_BITMASK | (nybble_count-1),
+static inline void emit_e(const Stepper * stepper, uint16_t word, size_t nibble_count){
+	const Emitted e = (Emitted) {
+		.type=0b10000 | EXPRESSION_BITMASK | (nibble_count-1),
 		.value=word
 	};
 	emit(stepper, e);
 }
+
 static void add_label(const char *label, const int linenum) {
 	if(n_lookup == MAX_LOOKUP)
 		exit_error("error: too many entries in lookup\n");
@@ -499,7 +598,6 @@ scan_start:
 			stepper->in++;
 		goto scan_start;
 	}
-
 
 	if(isalpha(*stepper->in)) {
 		while(isalnum(*stepper->in) || *stepper->in == '_')
@@ -579,7 +677,7 @@ scan_start:
 void expect(Stepper * stepper, int what) {
 	SYMBOL sym = nextsym(stepper);
 	if(sym != what)
-		exit_error("error:%d: '%c'%d expected\n", stepper->linenum, what,sym);
+		exit_error("error:%d: '%c' expected (got %d)\n", stepper->linenum, what, sym);
 	nextsym(stepper);
 }
 
@@ -597,12 +695,12 @@ static int get_register(const Stepper * stepper) {
 	return reg;
 }
 
-static int get_num(char *token, size_t nybble_count, const int linenum) {
+static int get_num(char *token, size_t nibble_count, const int linenum) {
 	int a = evaluate_arithmetic_expression(token, linenum);
-	int bound=1<<(4*nybble_count);
+	int bound=1<<(4*nibble_count);
 	if(a < -(bound/2) || a > (bound-1)){
 		char format[128];
-		sprintf(format,"error:%%d: number %%d takes more than %zd nybbles (%%0%zdX)\n",nybble_count,nybble_count);
+		sprintf(format,"error:%%d: number %%d takes more than %zd nibbles (%%0%zdX)\n",nibble_count,nibble_count);
 		exit_error(format, linenum, a, a);
 	}
 	return a&(bound-1);
@@ -615,7 +713,6 @@ int c8_assemble(const char *text) {
 	stepper.in = text;
 
 	if(c8_verbose) c8_message("Assembling...\n");
-
 
 	program.max_instr = 0;
 
@@ -631,6 +728,27 @@ int c8_assemble(const char *text) {
 	nextsym(&stepper);
 	while(stepper.sym != SYM_END) {
 		switch(stepper.sym){
+		/**
+		 * ## Directives
+		 *
+		 * ### define
+		 *
+		 * Syntax: `define ID VALUE`
+		 *
+		 * Associates a value with an identifier.
+		 *
+		 * For example, definitions like these
+		 *
+		 * ```
+		 * ; Sprite X,Y position
+		 * define sprite_x V0
+         * define sprite_y V1
+		 * ```
+		 *
+		 * will cause the identifiers `sprite_x` and `sprite_y` to be associated with the
+		 * registers `V0` and `V1`
+		 *
+		 */
 		case SYM_DEFINE:
 		{
 			char name[TOK_SIZE];
@@ -649,6 +767,24 @@ int c8_assemble(const char *text) {
 			nextsym(&stepper);
 		}
 		break;
+		/**
+		 * ### offset
+		 *
+		 * Syntax: `offset EXPRESSION`
+		 *
+		 * Determines where in the program memory the next instruction will be emitted
+		 *
+		 * For example, the statement
+		 *
+		 * ```
+		 * offset #280
+		 * ```
+		 *
+		 * will cause the next bytes emitted by the assembler to start at 0x280
+		 *
+		 * The initial value is 0x200 (512), which is the default starting address
+		 * for Chip8 programs.
+		 */
 		case SYM_OFFSET:
 			nextsym(&stepper);
 			if(stepper.sym != SYM_NUMBER)
@@ -656,6 +792,32 @@ int c8_assemble(const char *text) {
 			program.next_instr = get_num(stepper.token,3,stepper.linenum);
 			nextsym(&stepper);
 		break;
+		/**
+		 * ### db
+		 *
+		 * Syntax: `db byte, byte, byte, ...`
+		 *
+		 * Emits a sequence of bytes.
+		 *
+		 * For example, this is how you create a sprite's graphic
+		 * by emitting a sequence of bytes:
+		 *
+		 * ```
+		 * sprite1:
+  		 * db  %01111110,
+  		 *     %10000001,
+  		 *     %10100101,
+  		 *     %10111101,
+  		 *     %10111101,
+  		 *     %10011001,
+  		 *     %10000001,
+  		 *     %01111110,
+		 * ```
+		 *
+		 * (the label `sprite1` allows you to find those bytes later
+		 * through a `LD I, sprite1` instruction)
+		 *
+		 */
 		case SYM_DB:
 			do {
 				nextsym(&stepper);
@@ -669,14 +831,20 @@ int c8_assemble(const char *text) {
 					.tlabel=LT_NONE*/
 					.type=ET_EXP8_EMIT8,
 					.value=0
-
-
 				};
 
 				emit(&stepper,e);
 				nextsym(&stepper);
 			} while(stepper.sym == ',');
 		break;
+		/**
+		 * ### dw
+		 *
+		 * Syntax: `dw word, word, word, ...`
+		 *
+		 * Like `db`, but emits a sequence of 16-bit words.
+		 *
+		 */
 		case SYM_DW:
 			do {
 				nextsym(&stepper);
@@ -688,16 +856,78 @@ int c8_assemble(const char *text) {
 				nextsym(&stepper);
 			} while(stepper.sym == ',');
 		break;
+		/**
+		 * ## Labels
+		 *
+		 * Labels for jump targets are lines that start start with
+		 * an identifier followed by a colon. The identifier can be
+		 * used elsewhere in the program as a target for jump
+		 * instructions. For example:
+		 *
+		 * ```
+		 * loop:
+		 *     CLS
+		 *     ...
+		 *     JP loop
+		 * ```
+		 *
+		 */
 		case SYM_IDENTIFIER:
 			add_label(stepper.token, stepper.linenum);
 			expect(&stepper, ':');
 		break;
 		case SYM_INSTRUCTION:
-			if(!strcmp("cls", stepper.token))
+			/**
+			 * ## Instructions
+			 *
+			 * ### SYS - System call
+			 *
+			 * `sys nnn` - calls the system subroutine at location `nnn` (`0nnn`)
+			 *
+			 * (Unused at the moment; *TODO* We need a mechanism to hook `sys`
+			 * calls into the interpreter in the future)
+			 */
+			if(!strcmp("sys", stepper.token)) {
+				nextsym(&stepper);
+				emit_e(&stepper, 0x0000,3);
+			/**
+			 * ### CLS - Clear screen
+			 *
+			 * `cls` - Clears the screen (`00E0`).
+			 */
+			} else if(!strcmp("cls", stepper.token)) {
 				emit_w(&stepper, 0x00E0);
-			else if(!strcmp("ret", stepper.token))
+			/**
+			 * ### CALL - Call subroutine
+			 *
+			 * `call addr` - Calls the subroutine at address `nnn` (`2nnn`).
+			 */
+			} else if(!strcmp("call", stepper.token)) {
+				nextsym(&stepper);
+				if(stepper.sym != SYM_IDENTIFIER && stepper.sym != SYM_NUMBER){
+					exit_error("error:%d: address expected", stepper.linenum);
+				}
+				const Emitted e={
+					.type=ET_EXP16,
+					.value=0x2000
+				};
+				emit(&stepper, e);
+			/**
+			 * ### RET - Return
+			 *
+			 * `ret` - Returns from a subroutine (`00EE`).
+			 */
+			} else if(!strcmp("ret", stepper.token)) {
 				emit_w(&stepper, 0x00EE);
-			else if(!strcmp("jp", stepper.token)) {
+			/**
+			 * ### JP - Jump
+			 *
+			 * Unconditional jump instruction.
+			 *
+			 * * `jp nnn` - Jumps to the program location `nnn` (`1nnn`).
+			 * * `jp v0, nnn` - Jumps to the program location calculated from `v0 + nnn` (`Bnnn`).
+			 */
+			} else if(!strcmp("jp", stepper.token)) {
 				nextsym(&stepper);
 				if(stepper.sym == SYM_IDENTIFIER || stepper.sym == SYM_NUMBER){
 					const Emitted e={
@@ -721,17 +951,16 @@ int c8_assemble(const char *text) {
 						emit_e(&stepper, 0xB000 ,3);
 				} else
 					emit_e(&stepper, 0x1000 , 3);
-			} else if(!strcmp("call", stepper.token)) {
-				nextsym(&stepper);
-				if(stepper.sym != SYM_IDENTIFIER && stepper.sym != SYM_NUMBER){
-					exit_error("error:%d: address expected", stepper.linenum);
-				}
-				const Emitted e={
-					.type=ET_EXP16,
-					.value=0x2000
-				};
-				emit(&stepper, e);
 
+			/**
+			 * ### SE - Skip if Equal
+			 *
+			 * Skip if equal:
+			 *
+			 * * `se Vn, kk` - skips the next instruction if the value in `Vn` equals `kk` (`3nkk`)
+			 * * `se Vx, Vy` - skips the next instruction if the value in `Vx` equals
+			 *     the value in `Vy` (`5xy0`)
+			 */
 			} else if(!strcmp("se", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
@@ -743,6 +972,16 @@ int c8_assemble(const char *text) {
 					emit_w(&stepper, 0x5000 | (regx << 8) | (regy << 4));
 				} else
 					exit_error("error:%d: operand expected\n", stepper.linenum);
+			/**
+			 * ### SNE - Skip Not Equal
+			 *
+			 * Skip if not equal:
+			 *
+			 * * `sne Vn, kk` - skips the next instruction if the value in `Vn` is
+			 *     not equal to `kk` (`4nkk`)
+			 * * `sne Vx, Vy` - skips the next instruction if the value in `Vx` is
+			 *     not equal to the value in `Vy` (`9xy0`)
+			 */
 			} else if(!strcmp("sne", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
@@ -754,22 +993,30 @@ int c8_assemble(const char *text) {
 					emit_w(&stepper, 0x9000 | (regx << 8) | (regy << 4));
 				} else
 					exit_error("error:%d: operand expected\n", stepper.linenum);
-			} else if(!strcmp("add", stepper.token)) {
-				nextsym(&stepper);
-				if(stepper.sym == SYM_I) {
-					expect(&stepper, ',');
-					emit_w(&stepper, 0xF01E | (get_register(&stepper) << 8));
-				} else {
-					int regx = get_register(&stepper);
-					expect(&stepper, ',');
-					if(stepper.sym == SYM_NUMBER || stepper.sym == SYM_IDENTIFIER)
-						emit_e(&stepper, 0x7000 | (regx << 8) ,2);
-					 else if(stepper.sym == SYM_REGISTER) {
-						int regy = get_register(&stepper);
-						emit_w(&stepper, 0x8004 | (regx << 8) | (regy << 4));
-					} else
-						exit_error("error:%d: operand expected\n", stepper.linenum);
-				}
+			/**
+			 * ### LD - Load
+			 *
+			 * Load instructions:
+			 *
+			 * * `ld I, nnn` - loads the value `nnn` into register `I` (`Annn`).
+			 * * `ld Vx, DT` - loads the value of the _Delay Timer_ into `Vx` (`Fx07`).
+			 * * `ld DT, Vx` - loads the value in `Vx` into the _Delay Timer_ (`Fx15`).
+			 * * `ld ST, Vx` - loads the value in `Vx` into the _Sound Timer_ (`Fx18`).
+			 * * `ld F, Vx` - loads the location of the font sprite for `Vx` into `I` (`Fx29`).
+			 * * `ld B, Vx` - stores the BCD representation of `Vx` in the memory locations `I`, `I+1` and `I+2` (`Fx33`).
+			 * * `ld [I], Vx` - saves `V0` through `Vx` to the memory addresses `I` through `I+x` (`Fx55`).
+			 * * `ld Vx, [I]` - loads `V0` through `Vx` from the memory addresses `I` through `I+x` (`Fx65`).
+			 * * `ld Vx, kk` - loads the literal value `kk` into `Vx` (`6xkk`).
+			 * * `ld Vx, Vy` - loads the value in `Vy` into `Vx` (`8xy0`).
+			 * * `ld Vx, K` - loads a key pressed into `Vx` (`Fx0A`).
+			 *
+			 * #### Super Chip48 LD additions
+			 *
+			 * * `ld HF, Vx` (`Fx30`)
+			 * * `ld R, Vx` (`Fx75`)
+			 * * `ld Vx, R` (`Fx85`)
+			 *
+			 */
 			} else if(!strcmp("ld", stepper.token)) {
 				nextsym(&stepper);
 				if(stepper.sym == SYM_I) {
@@ -829,30 +1076,89 @@ int c8_assemble(const char *text) {
 					} else
 						exit_error("error:%d: operand expected, found %s[%d]\n", stepper.linenum, stepper.token, stepper.sym);
 				}
+			/**
+			 * ### ADD - Add values
+			 *
+			 * * `add Vn, kk` - Adds `kk` to `Vn`;
+			 *       The result is stored in `Vn` (`7nkk`)
+			 * * `add Vx, Vy` - Adds the value in `Vy` to `Vx`;
+			 *       The result is stored in `Vx` (`8xy4`)
+			 * * `add I, Vn` - Adds the value in `Vn` to `I`;
+			 *       The result is stored in `I` (`Fn1E`)
+			 */
+			} else if(!strcmp("add", stepper.token)) {
+				nextsym(&stepper);
+				if(stepper.sym == SYM_I) {
+					expect(&stepper, ',');
+					emit_w(&stepper, 0xF01E | (get_register(&stepper) << 8));
+				} else {
+					int regx = get_register(&stepper);
+					expect(&stepper, ',');
+					if(stepper.sym == SYM_NUMBER || stepper.sym == SYM_IDENTIFIER)
+						emit_e(&stepper, 0x7000 | (regx << 8) ,2);
+					 else if(stepper.sym == SYM_REGISTER) {
+						int regy = get_register(&stepper);
+						emit_w(&stepper, 0x8004 | (regx << 8) | (regy << 4));
+					} else
+						exit_error("error:%d: operand expected\n", stepper.linenum);
+				}
+			/**
+			 * ### OR - Bitwise OR
+			 *
+			 * `or Vx, Vy` - biwise OR of the value in `Vy` with `Vx` (`8xy1`).
+			 *
+			 * The result is stored in `Vx`
+			 */
 			} else if(!strcmp("or", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
 				int regy = get_register(&stepper);
 				emit_w(&stepper, 0x8001 | (regx << 8) | (regy << 4));
+			/**
+			 * ### AND - Bitwise AND
+			 *
+			 * `and Vx, Vy` - biwise AND of the value in `Vy` with `Vx` (`8xy2`).
+			 *
+			 * The result is stored in `Vx`
+			 */
 			} else if(!strcmp("and", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
 				int regy = get_register(&stepper);
 				emit_w(&stepper, 0x8002 | (regx << 8) | (regy << 4));
+			/**
+			 * ### XOR - Bitwise Exclusive OR
+			 *
+			 * `xor Vx, Vy` - biwise exclusive-OR of the value in `Vy` with `Vx` (`8xy3`).
+			 *
+			 * The result is stored in `Vx`
+			 */
 			} else if(!strcmp("xor", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
 				int regy = get_register(&stepper);
 				emit_w(&stepper, 0x8003 | (regx << 8) | (regy << 4));
+			/**
+			 * ### SUB - Subtract
+			 *
+			 * `sub Vx, Vy` - Subtracts the value in `Vy` from `Vx` (`8xy5`).
+			 *
+			 * The result is stored in `Vx`
+			 */
 			} else if(!strcmp("sub", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
 				int regy = get_register(&stepper);
 				emit_w(&stepper, 0x8005 | (regx << 8) | (regy << 4));
+			/**
+			 * ### SHR - Shift Right
+			 *
+			 * `shr Vx [, Vy]` maps to the `8xy6` Chip8 instruction.
+			 */
 			} else if(!strcmp("shr", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
@@ -864,12 +1170,22 @@ int c8_assemble(const char *text) {
 				} else
 					stepper.in=stepper.last;
 				emit_w(&stepper, 0x8006 | (regx << 8) | (regy << 4));
+			/**
+			 * ### SUBN - Subtract No Borrow
+			 *
+			 * `subn Vx, Vy` maps to the `8xy7` Chip8 instruction.
+			 */
 			} else if(!strcmp("subn", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
 				int regy = get_register(&stepper);
 				emit_w(&stepper, 0x8007 | (regx << 8) | (regy << 4));
+			/**
+			 * ### SHL - Shift Left
+			 *
+			 * `shl Vx [, Vy]` maps to the `8xyE` Chip8 instruction.
+			 */
 			} else if(!strcmp("shl", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
@@ -881,14 +1197,24 @@ int c8_assemble(const char *text) {
 				} else
 					stepper.in=stepper.last;
 				emit_w(&stepper, 0x800E | (regx << 8) | (regy << 4));
+			/**
+			 * ### RND - Random number
+			 *
+			 * `rnd Vn, kk` maps to the `Cnkk` Chip8 instruction.
+			 */
 			} else if(!strcmp("rnd", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
 				expect(&stepper, ',');
 				if(stepper.sym == SYM_NUMBER || stepper.sym == SYM_IDENTIFIER){
-					emit_e(&stepper, 0xC000 | (regx << 8) ,2);
+					emit_e(&stepper, 0xC000 | (regx << 8), 2);
 				}
 				else exit_error("error:%d: operand expected\n", stepper.linenum);
+			/**
+			 * ### DRW - Draw Sprite
+			 *
+			 * `drw Vx, Vy, n` maps to the `Dxyn` Chip8 instruction.
+			 */
 			}  else if(!strcmp("drw", stepper.token)) {
 				nextsym(&stepper);
 				int regx = get_register(&stepper);
@@ -896,28 +1222,69 @@ int c8_assemble(const char *text) {
 				int regy = get_register(&stepper);
 				expect(&stepper, ',');
 				emit_e(&stepper, 0xD000 | (regx << 8) | (regy << 4),1);
+			/**
+			 * ### SKP - Skip if Key Pressed
+			 *
+			 * `skp Vn` maps to the `En9E` Chip8 instruction.
+			 */
 			} else if(!strcmp("skp", stepper.token)) {
 				nextsym(&stepper);
 				emit_w(&stepper, 0xE09E | (get_register(&stepper) << 8));
+			/**
+			 * ### SKNP - Skip if Key Not Pressed
+			 *
+			 * `sknp register` maps to the `EnA1` Chip8 instruction.
+			 */
 			} else if(!strcmp("sknp", stepper.token)) {
 				nextsym(&stepper);
 				emit_w(&stepper, 0xE0A1 | (get_register(&stepper) << 8));
+			/**
+			 *
+			 * ## Super Chip48 Instructions
+			 *
+			 * ### SCD - Scroll Down
+			 *
+			 * `scd n` maps to the `00Cn` Chip8 instruction.
+			 *
+			 */
 			} else if(!strcmp("scd", stepper.token)) {
 				nextsym(&stepper);
 				emit_e(&stepper, 0x00C0 ,1);
+			/**
+			 * ### SCR - Scroll Right
+			 *
+			 * `scr` maps to the `00FB` Chip8 instruction.
+			 */
 			} else if(!strcmp("scr", stepper.token)) {
 				emit_w(&stepper, 0x00FB);
+			/**
+			 * ### SCL - Scroll Left
+			 *
+			 * `scl` maps to the `00FC` Chip8 instruction.
+			 */
 			} else if(!strcmp("scl", stepper.token)) {
 				emit_w(&stepper, 0x00FC);
+			/**
+			 * ### EXIT - Exit
+			 *
+			 * `exit` maps to the `00FD` Chip8 instruction.
+			 */
 			} else if(!strcmp("exit", stepper.token)) {
 				emit_w(&stepper, 0x00FD);
+			/**
+			 * ### LOW - Low Resolution Mode
+			 *
+			 * `low` maps to the `00FE` Chip8 instruction.
+			 */
 			} else if(!strcmp("low", stepper.token)) {
 				emit_w(&stepper, 0x00FE);
+			/**
+			 * ### HIGH - High Resolution Mode
+			 *
+			 * `high` maps to the `00FF` Chip8 instruction.
+			 */
 			} else if(!strcmp("high", stepper.token)) {
 				emit_w(&stepper, 0x00FF);
-			} else if(!strcmp("sys", stepper.token)) {
-				nextsym(&stepper);
-				emit_e(&stepper, 0x0000,3);
 			}
 
 			nextsym(&stepper);
@@ -943,9 +1310,6 @@ int c8_assemble(const char *text) {
 			program.bytes[i+1].byte |= result & 0xff;
 		}
 
-
-
-
 		if(c8_verbose > 1) {
 			if(!(i & 0x01))
 				c8_message("%03X: %02X", i, program.bytes[i].byte);
@@ -966,3 +1330,12 @@ int c8_assemble(const char *text) {
 
 	return 0;
 }
+
+/**
+ * ## References
+ *
+ * * [Cowgod's Chip-8 Technical Reference v1.0](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM)
+ * * The Octo project's [Chip8 reference PDF](https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/chip8ref.pdf) by John Earnest.
+ * * The Octo project's [Mastering SuperChip](https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/SuperChip.md) reference.
+ *
+ */
