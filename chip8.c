@@ -222,7 +222,7 @@ void c8_step() {
 			V[x] += kk;
 			break;
 		case 0x8000: {
-			uint16_t ans;
+			uint16_t ans, carry;
 			switch(nibble) {
 				case 0x0:
 					/* LD Vx, Vy */
@@ -243,28 +243,34 @@ void c8_step() {
 				case 0x4:
 					/* ADD Vx, Vy */
 					ans = V[x] + V[y];
-					V[0xF] = (ans > 255);
 					V[x] = ans & 0xFF;
+					V[0xF] = (ans > 255);
 					break;
 				case 0x5:
 					/* SUB Vx, Vy */
-					V[0xF] = (V[x] > V[y]);
-					V[x] -= V[y];
+					ans = V[x] - V[y];
+					carry = (V[x] > V[y]);
+					V[x] = ans & 0xFF;
+					V[0xF] = carry;
 					break;
 				case 0x6:
 					/* SHR Vx, Vy */
-					V[0xF] = (V[x] & 0x01);
+					carry = (V[x] & 0x01);
 					V[x] >>= 1;
+					V[0xF] = carry;
 					break;
 				case 0x7:
 					/* SUBN Vx, Vy */
-					V[0xF] = (V[y] > V[x]);
-					V[x] = V[y] - V[x];
+					ans = V[y] - V[x];
+					carry = (V[y] > V[x]);
+					V[x] = ans & 0xFF;
+					V[0xF] = carry;
 					break;
 				case 0xE:
 					/* SHL Vx, Vy */
-					V[0xF] = ((V[x] & 0x80) != 0);
+					carry = ((V[x] & 0x80) != 0);
 					V[x] <<= 1;
+					V[0xF] = carry;
 					break;
 			}
 		} break;
