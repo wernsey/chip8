@@ -14,6 +14,58 @@ platform dependent should be moved elsewhere.
 
 #include "chip8.h"
 
+
+/*
+The definitions below determine how the Quirks in the [quirks-test][]
+are handled.
+
+*TODO:* Fix the "Display wait" Quirks!!!
+
+[quirks-test]: https://github.com/Timendus/chip8-test-suite/tree/main#quirks-test
+*/
+
+#ifndef QUIRKS_VF_RESET
+/*
+Controls whether the AND/OR/XOR instructions reset the VF register to 0.
+The original COSMAC CHIP8 performed these directly in the ALU, so VF was
+always affected, but later implementations didn't
+https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#logical-and-arithmetic-instructions
+*/
+#  define QUIRKS_VF_RESET 1
+#endif
+
+#ifndef QUIRKS_MEM_CHIP8
+/* Controls whether the `I` register is incremented by the Fx55 and Fx65 instructions.
+The original COSMAC CHIP8 incremented the `I` register, but modern implementations don't.
+If you're unsure, set it to 0 because that would be more compatible.
+https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#fx55-and-fx65-store-and-load-memory
+*/
+#  define QUIRKS_MEM_CHIP8 1
+#endif
+
+#ifndef QUIRKS_SHIFT
+/* The original CHIP8 stored Vy into Vx when performing the 8xy6 and 8xyE shift instructions,
+but later implementations didn't.
+https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#8xy6-and-8xye-shift
+*/
+#  define QUIRKS_SHIFT 0
+#endif
+
+#ifndef QUIRKS_JUMP
+/* The CHIP-48 and SUPER-CHIP implementations originally implemented the
+instruction as Bxnn as a jump to `Vx + xnn` rather than as `V0 + xnn`
+(it may have been a mistake).
+https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#bnnn-jump-with-offset
+*/
+#  define QUIRKS_JUMP 0
+#endif
+
+#ifndef QUIRKS_CLIPPING
+/* I didn't actually see in the documentation under what circumstances the clipping would be off */
+#  define QUIRKS_CLIPPING 1
+#endif
+
+
 /* Where in RAM to load the font.
 	The font should be in the first 512 bytes of RAM (see [2]),
 	so FONT_OFFSET should be less than or equal to 0x1B0 */
@@ -231,14 +283,23 @@ void c8_step() {
 				case 0x1:
 					/* OR Vx, Vy */
 					V[x] |= V[y];
+#if QUIRKS_VF_RESET
+					V[0xF] = 0;
+#endif
 					break;
 				case 0x2:
 					/* AND Vx, Vy */
 					V[x] &= V[y];
+#if QUIRKS_VF_RESET
+					V[0xF] = 0;
+#endif
 					break;
 				case 0x3:
 					/* XOR Vx, Vy */
 					V[x] ^= V[y];
+#if QUIRKS_VF_RESET
+					V[0xF] = 0;
+#endif
 					break;
 				case 0x4:
 					/* ADD Vx, Vy */
@@ -255,6 +316,9 @@ void c8_step() {
 					break;
 				case 0x6:
 					/* SHR Vx, Vy */
+#if !QUIRKS_SHIFT
+					V[x] = V[y];
+#endif
 					carry = (V[x] & 0x01);
 					V[x] >>= 1;
 					V[0xF] = carry;
@@ -268,6 +332,9 @@ void c8_step() {
 					break;
 				case 0xE:
 					/* SHL Vx, Vy */
+#if !QUIRKS_SHIFT
+					V[x] = V[y];
+#endif
 					carry = ((V[x] & 0x80) != 0);
 					V[x] <<= 1;
 					V[0xF] = carry;
@@ -284,7 +351,11 @@ void c8_step() {
 			break;
 		case 0xB000:
 			/* JP V0, nnn */
+#if QUIRKS_JUMP
+			PC = (nnn + V[x]) & 0xFFF;
+#else
 			PC = (nnn + V[0]) & 0xFFF;
+#endif
 			break;
 		case 0xC000:
 			/* RND Vx, kk */
@@ -292,23 +363,36 @@ void c8_step() {
 			break;
 		case 0xD000: {
 			/* DRW Vx, Vy, nibble */
-			int mW, mH, W, p, q;
+			int mW, mH, W, H, p, q;
+			int tx, ty, byte, bit, pix;
 			if(hi_res) {
-				W = 128; mW = 0x7F; mH = 0x3F;
+				W = 128; H = 64; mW = 0x7F; mH = 0x3F;
 			} else {
-				W = 64; mW = 0x3F; mH = 0x1F;
+				W = 64; H = 32; mW = 0x3F; mH = 0x1F;
 			}
 
 			V[0xF] = 0;
 			if(nibble) {
 				x = V[x]; y = V[y];
+				x &= mW;
+				y &= mH;
 				for(q = 0; q < nibble; q++) {
+					ty = (y + q);
+#if QUIRKS_CLIPPING
+					if(ty >= H) break;
+#endif
 					for(p = 0; p < 8; p++) {
-						int pix = (RAM[I + q] & (0x80 >> p)) != 0;
+						tx = (x + p);
+
+#if QUIRKS_CLIPPING
+						if(tx >= W) break;
+#endif
+						pix = (RAM[I + q] & (0x80 >> p)) != 0;
 						if(pix) {
-							int tx = (x + p) & mW, ty = (y + q) & mH;
-							int byte = ty * W + tx;
-							int bit = 1 << (byte & 0x07);
+							tx &= mW;
+							ty &= mH;
+							byte = ty * W + tx;
+							bit = 1 << (byte & 0x07);
 							byte >>= 3;
 							if(pixels[byte] & bit)
 								V[0x0F] = 1;
@@ -412,6 +496,9 @@ void c8_step() {
 					assert(I + x <= TOTAL_RAM);
 					if(x >= 0)
 						memcpy(RAM + I, V, x+1);
+#if QUIRKS_MEM_CHIP8
+					I += x + 1;
+#endif
 					break;
 				case 0x65:
 					/* LD Vx, [I] */
@@ -420,6 +507,9 @@ void c8_step() {
 					assert(I + x <= TOTAL_RAM);
 					if(x >= 0)
 						memcpy(V, RAM + I, x+1);
+#if QUIRKS_MEM_CHIP8
+					I += x + 1;
+#endif
 					break;
 				case 0x75:
 					/* LD R, Vx */

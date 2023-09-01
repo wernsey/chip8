@@ -173,8 +173,10 @@ and there were some discrepancies. This is how I handled them:
   <https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/SuperChip.md>
 * [12] <http://www.codeslinger.co.uk/pages/projects/chip8/primitive.html>
 * [13] <https://github.com/mattmikolay/chip-8/wiki/CHIP%E2%80%908-Technical-Reference>
-* [14] <https://github.com/corax89/chip8-test-rom>
+* [14] [corax89' chip8-test-rom](https://github.com/corax89/chip8-test-rom)
 * [15] [Timendus' chip8-test-suite](https://github.com/Timendus/chip8-test-suite)
+* [16] Tobias V. Langhoff's [Guide to making a CHIP-8 emulator](https://tobiasvl.github.io/blog/write-a-chip-8-emulator/)
+  * This one is very useful for explaining the various quirks
 
 ## License
 
