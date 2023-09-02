@@ -1,4 +1,10 @@
-/* CHIP-8 Disassembler. */
+/* CHIP-8 Disassembler.
+
+TODO: It choked on the [5-quirks][] test ROM in Timendus's suite.
+It seems there is a #0000 at address #222 that is a jump destination, and it
+triggers a "bad jump" error.
+[5-quirks]: https://github.com/Timendus/chip8-test-suite/raw/main/bin/5-quirks.ch8
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>

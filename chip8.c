@@ -2,6 +2,11 @@
 Core of the CHIP-8 interpreter.
 This file should be kept platform independent. Everything that is
 platform dependent should be moved elsewhere.
+
+
+TODO: Apparently SuperChip 1.0 and 1.1 has a lot of caveats that
+I haven't addressed in my implementation
+https://chip-8.github.io/extensions/#super-chip-10
 */
 
 #include <stdio.h>
@@ -23,6 +28,10 @@ are handled.
 
 [quirks-test]: https://github.com/Timendus/chip8-test-suite/tree/main#quirks-test
 */
+
+#ifndef QUIRKS_DISP_WAIT
+#  define QUIRKS_DISP_WAIT 0
+#endif
 
 #ifndef QUIRKS_VF_RESET
 /*
@@ -47,6 +56,8 @@ https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#fx55-and-fx65-store-and
 /* The original CHIP8 stored Vy into Vx when performing the 8xy6 and 8xyE shift instructions,
 but later implementations didn't.
 https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#8xy6-and-8xye-shift
+(Note to self: The INVADERS.ch8 game I vound somewhere is an example of where the shifting
+needs to be on)
 */
 #  define QUIRKS_SHIFT 0
 #endif
@@ -86,6 +97,8 @@ static uint8_t SP;
 
 /* Display memory */
 static uint8_t pixels[1024];
+
+static int yield = 0;
 
 static int screen_updated; /* Screen updated */
 static int hi_res; /* Hi-res mode? */
@@ -162,10 +175,13 @@ void c8_reset() {
 
 	hi_res = 0;
 	screen_updated = 0;
+	yield = 0;
 }
 
 void c8_step() {
 	assert(PC < TOTAL_RAM);
+
+	if(yield) return;
 
 	uint16_t opcode = RAM[PC] << 8 | RAM[PC+1];
 	PC += 2;
@@ -365,6 +381,10 @@ void c8_step() {
 			/* DRW Vx, Vy, nibble */
 			int mW, mH, W, H, p, q;
 			int tx, ty, byte, bit, pix;
+
+			/* TODO: [17] mentions that V[x] and V[y] gets modified by
+			this instruction... */
+
 			if(hi_res) {
 				W = 128; H = 64; mW = 0x7F; mH = 0x3F;
 			} else {
@@ -383,7 +403,6 @@ void c8_step() {
 #endif
 					for(p = 0; p < 8; p++) {
 						tx = (x + p);
-
 #if QUIRKS_CLIPPING
 						if(tx >= W) break;
 #endif
@@ -403,17 +422,25 @@ void c8_step() {
 			} else {
 				/* SCHIP mode has a 16x16 sprite if nibble == 0 */
 				x = V[x]; y = V[y];
+				x &= mW;
+				y &= mH;
 				for(q = 0; q < 16; q++) {
+					ty = (y + q);
+#if QUIRKS_CLIPPING
+					if(ty >= H) break;
+#endif
 					for(p = 0; p < 16; p++) {
-						int pix;
+						tx = (x + p);
+#if QUIRKS_CLIPPING
+						if(tx >= W) break;
+#endif
 						if(p >= 8)
 							pix = (RAM[I + (q * 2) + 1] & (0x80 >> (p & 0x07))) != 0;
 						else
 							pix = (RAM[I + (q * 2)] & (0x80 >> p)) != 0;
 						if(pix) {
-							int tx = (x + p) & mW, ty = (y + q) & mH;
-							int byte = ty * W + tx;
-							int bit = 1 << (byte & 0x07);
+							byte = ty * W + tx;
+							bit = 1 << (byte & 0x07);
 							byte >>= 3;
 							if(pixels[byte] & bit)
 								V[0x0F] = 1;
@@ -423,6 +450,9 @@ void c8_step() {
 				}
 			}
 			screen_updated = 1;
+#if QUIRKS_DISP_WAIT
+			yield = 1;
+#endif
 			} break;
 		case 0xE000: {
 			if(kk == 0x9E) {
@@ -467,7 +497,7 @@ void c8_step() {
 				case 0x1E:
 					/* ADD I, Vx */
 					I += V[x];
-					/* According to [1] the VF is set if I overflows. */
+					/* According to [wikipedia][] the VF is set if I overflows. */
 					if(I > 0xFFF) {
 						V[0xF] = 1;
 						I &= 0xFFF;
@@ -607,6 +637,7 @@ void c8_key_up(uint8_t k) {
 }
 
 void c8_60hz_tick() {
+	yield = 0;
 	if(DT > 0) DT--;
 	if(ST > 0) ST--;
 }
@@ -692,3 +723,8 @@ int c8_message(const char *msg, ...) {
 		return c8_puts(c8_message_text);
 	return 0;
 }
+
+/**
+ * [wikipedia]: https://en.wikipedia.org/wiki/CHIP-8
+ *
+ */

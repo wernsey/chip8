@@ -1,14 +1,12 @@
 # CHIP-8 Interpreter, Assembler and Disassembler
 
-This package contains an interpreter for
-[CHIP-8](https://en.wikipedia.org/wiki/CHIP-8) as well as a command-line
-assembler and disassembler.
+This package contains an interpreter for [CHIP-8][wikipedia] as well as a
+command-line assembler and disassembler.
 
 It also supports the SuperChip instructions.
 
 The syntax of the assembler and disassembler is based on the syntax described
-in [Cowgod's Chip-8 Technical Reference
-v1.0](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM), by Thomas P. Greene
+in [Cowgod's Chip-8 Technical Reference v1.0][cowgod], by Thomas P. Greene
 
 Frédéric Devernay's [SVision-8 website](http://devernay.free.fr/hacks/chip8/)
 has a wealth of information. He also has a collection of CHIP-8 games and
@@ -23,7 +21,7 @@ programs in his [GAMES.zip](http://devernay.free.fr/hacks/chip8/GAMES.zip).
 
 To use the emulator:
 
-* Under Linux: Type `chip8 game.ch8` where game.ch8 is the binary CHIP-8 file.
+* Under Linux: Type `./chip8 game.ch8` where game.ch8 is the binary CHIP-8 file.
 * Under Windows: Type `chip8 game.ch8` or `chip8-gdi game.ch8` depending on
   which of the implementations (see below) you want to use.
 
@@ -32,14 +30,14 @@ platform independent.
 
 To use the assembler, type
 
-    $ c8asm -o file.c8h file.asm
+    $ ./c8asm -o file.c8h file.asm
 
 This will assemble `file.asm` into a binary `file.c8h`. If the `-o` is not
 specified it will default to `a.c8h`.
 
 To use the disassembler, run the command
 
-    $ c8dasm a.ch8 > outfile.asm
+    $ ./c8dasm a.ch8 > outfile.asm
 
 where `a.ch8` is the file you want to disassemble.
 
@@ -120,28 +118,26 @@ function to draw the screen.
 I've consulted several sources for my implementation (see references below),
 and there were some discrepancies. This is how I handled them:
 
-* Regarding `2nnn`, [2] says the stack pointer is incremented first (i.e.
+* Regarding `2nnn`, [cowgod][] says the stack pointer is incremented first (i.e.
   `stack[++SP]`), but that skips `stack[0]`. My implementation does it the
   other way round.
-* The `Fx55` and `Fx65` instructions doesn't change `I` in my implementation:
-  * Wikipedia [1] says that modern emulators leave `I` unchanged (in the
-    footnote under the instruction table).
-  * [5] says that the `Fx55` instruction changes the value stored in `I`
-  * [9] says that `Fx65` also changes `I`
-  * All documentation I've found says that `I` changes to `I = I + x + 1`
-  * The `+ 1` above actually feels wrong
-* I've read David Winter's emulator's documentation [4] when I started, but I
+* ~~The `Fx55` and `Fx65` instructions doesn't change `I` in my implementation:~~
+  * This is a known [quirk][langhoff].
+  * The interpreter now provides `QUIRKS_MEM_CHIP8` to control this
+* I've read [David Winter's emulator][winter]'s documentation when I started, but I
   implemented things differently:
   * His emulator scrolls only 2 pixels if it is in low-res mode, but 4 pixels
-    is consistent with [10].
+    is consistent with [Octo][].
   * His emulator's `Dxy0` instruction apparently also works differently in
     lo-res mode.
-* [8] says that images aren't generally wrapped, but [3] and [10] seems to
-  think differently.
-* According to [7], the upper 256 bytes of RAM is used for the display, but it
+* ~~[instruction-draw][] says that images aren't generally wrapped, but
+  [muller][] and [Octo][] seems to think differently.~~
+  * This is alsp known [quirk][langhoff].
+  * The interpreter now provides `QUIRKS_CLIPPING` to control this
+* According to [chip8-wiki][], the upper 256 bytes of RAM is used for the display, but it
   seems that modern interpreters don't do that. Besides, you'd need 1024 bytes
   to store the SCHIP's hi-res mode.
-* `hp48_flags` is not cleared between runs (See [11]); I don't make any effort
+* `hp48_flags` is not cleared between runs (See [octo-superchip]); I don't make any effort
   to persist them, though.
 * Apparently there are CHIP-8 interpreters out there that don't use the
   standard 64x32 and 128x64 resolutions, but I don't support those.
@@ -151,32 +147,51 @@ and there were some discrepancies. This is how I handled them:
   `speed` in `render.c`). The value of 1200 instructions per second seems like
   a good value to start with.
 
-## References
+## References and Links
 
-* [1] <https://en.wikipedia.org/wiki/CHIP-8>
-* [2] Cowgod's Chip-8 Technical Reference v1.0, by Thomas P. Greene,
-  <http://devernay.free.fr/hacks/chip8/C8TECH10.HTM>
-* [3]
-  <http://www.multigesture.net/articles/how-to-write-an-emulator-chip-8-interpreter/>
-* [4] CHIP8 A CHIP8/SCHIP emulator Version 2.2.0, by David WINTER
-  (<http://devernay.free.fr/hacks/chip8/CHIP8.DOC>)
-* [5] Chip 8 instruction set, author unknown(?),
-  <http://devernay.free.fr/hacks/chip8/chip8def.htm>
-* [6] Byte Magazine Volume 03 Number 12 - Life pp. 108-122. "An Easy
-  Programming System," by Joseph Weisbecker,
-  <https://archive.org/details/byte-magazine-1978-12>
-* [7] <http://chip8.wikia.com/wiki/Chip8>
-* [8] <http://chip8.wikia.com/wiki/Instruction_Draw>
-* [9] Mastering CHIP-8 by Matthew Mikolay, <http://mattmik.com/chip8.html>
-* [10] Octo, John Earnest, <https://github.com/JohnEarnest/Octo>
-* [11] Octo SuperChip document, John Earnest,
-  <https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/SuperChip.md>
-* [12] <http://www.codeslinger.co.uk/pages/projects/chip8/primitive.html>
-* [13] <https://github.com/mattmikolay/chip-8/wiki/CHIP%E2%80%908-Technical-Reference>
-* [14] [corax89' chip8-test-rom](https://github.com/corax89/chip8-test-rom)
-* [15] [Timendus' chip8-test-suite](https://github.com/Timendus/chip8-test-suite)
-* [16] Tobias V. Langhoff's [Guide to making a CHIP-8 emulator](https://tobiasvl.github.io/blog/write-a-chip-8-emulator/)
+* [Wikipedia entry][wikipedia]
+* [Cowgod's Chip-8 Technical Reference v1.0][cowgod], by Thomas P. Greene,
+* [How to write an emulator (CHIP-8 interpreter)][muller] by Laurence Muller (archived)
+* [CHIP8 A CHIP8/SCHIP emulator Version 2.2.0][winter], by David Winter
+* [Chip 8 instruction set][chip8def], author unknown(?)
+* [Byte Magazine Volume 03 Number 12 - Life pp. 108-122. "An Easy
+  Programming System,"][byte] by Joseph Weisbecker
+* [chip8.wikia.com][chip8-wiki]
+  * Their page on the [Draw instruction][instruction-draw]
+* [Mastering CHIP-8][mikolay] by Matthew Mikolay
+* [Octo][], John Earnest
+* The [Octo SuperChip document][octo-superchip], by John Earnest
+* [codeslinger.co.uk](http://www.codeslinger.co.uk/pages/projects/chip8/primitive.html)
+* [CHIP‐8 Technical Reference](https://github.com/mattmikolay/chip-8/wiki/CHIP%E2%80%908-Technical-Reference), by Matthew Mikolay
+* [corax89' chip8-test-rom](https://github.com/corax89/chip8-test-rom)
+* [Timendus' chip8-test-suite][Timendus] was extremely useful to help clarify and fix the quirks.
+  * Timendus' [Silicon8](https://github.com/Timendus/silicon8/) CHIP8 implementation
+* Tobias V. Langhoff's [Guide to making a CHIP-8 emulator][langhoff]
   * This one is very useful for explaining the various quirks
+* [Chip-8 on the COSMAC VIP: Drawing Sprites](https://web.archive.org/web/20200925222127if_/https://laurencescotford.com/chip-8-on-the-cosmac-vip-drawing-sprites/), by Laurence Scotford (archive link)
+* <https://chip-8.github.io/extensions/> - explains several of the variants out there
+* <https://github.com/zaymat/super-chip8>
+  * The [load_quirk and shift_quirk](https://github.com/zaymat/super-chip8#load_quirk-and-shift_quirk)
+    section of that README has another explaination of some of the
+    quirks, along with a list of known games that need them.
+
+* <https://github.com/dario-santos/Super-Chip-Emulator> has a collection of ROMs I used for testing
+* <https://github.com/JohnEarnest/chip8Archive> - Archive of CHIP8 programs.
+* <https://github.com/tobiasvl/awesome-chip-8>
+
+[wikipedia]: https://en.wikipedia.org/wiki/CHIP-8
+[cowgod]: http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
+[muller]: https://web.archive.org/web/20110426134039if_/http://www.multigesture.net/articles/how-to-write-an-emulator-chip-8-interpreter/
+[winter]: http://devernay.free.fr/hacks/chip8/CHIP8.DOC
+[chip8def]: http://devernay.free.fr/hacks/chip8/chip8def.htm
+[byte]: https://archive.org/details/byte-magazine-1978-12
+[chip8-wiki]: <http://chip8.wikia.com/wiki/Chip8>
+[instruction-draw]: http://chip8.wikia.com/wiki/Instruction_Draw
+[mikolay]: <http://mattmik.com/chip8.html>
+[octo]: https://github.com/JohnEarnest/Octo
+[octo-superchip]: https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/SuperChip.md
+[langhoff]: https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
+[Timendus]: https://github.com/Timendus/chip8-test-suite
 
 ## License
 

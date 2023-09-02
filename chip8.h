@@ -54,7 +54,7 @@
 
 /** `#define PROG_OFFSET	512`  \
  * Offset of the program in RAM. Should be 512, but
- * apparently there are some computers where this is `0x600` [1].
+ * apparently there are some computers where this is `0x600` (See [wikipedia][]).
  */
 #define PROG_OFFSET	512
 
@@ -305,3 +305,8 @@ int c8_assemble(const char *text);
  * See `dasmmain.c` for an example of a program that uses this function.
  */
 void c8_disasm();
+
+/**
+ * [wikipedia]: https://en.wikipedia.org/wiki/CHIP-8
+ *
+ */

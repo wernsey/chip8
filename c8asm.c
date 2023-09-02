@@ -4,8 +4,8 @@
  *
  * ## Overview
  *
- * The syntax is mostly based on that of "Cowgod's Chip-8 Technical Reference v1.0",
- * by Thomas P. Greene, <http://devernay.free.fr/hacks/chip8/C8TECH10.HTM>
+ * The syntax is mostly based on that of [Cowgod's Chip-8 Technical Reference v1.0][cowgod],
+ * by Thomas P. Greene
  *
  * Semicolons `;` denote the start of a comment.
  *
@@ -35,6 +35,8 @@
  * * `offset` to control where in the ROM output is placed
  * * `db` to write bytes to the ROM
  * * `dw` to write 16-bit words to the ROM
+ *
+ * [cowgod]: http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
  *
  * ### Notation
  *

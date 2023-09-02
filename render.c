@@ -41,7 +41,7 @@ static int running = 1;
 static Bitmap *chip8_screen;
 static Bitmap *hud;
 
-/* These are the same keybindings Octo [10]'s  */
+/* These are the same keybindings [Octo][]'s  */
 static unsigned int Key_Mapping[16] = {
 #if defined(SDL) || defined(SDL2)
     KCODEA(x,X),
