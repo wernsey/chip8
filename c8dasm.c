@@ -1,19 +1,5 @@
 /* CHIP-8 Disassembler.
 
-TODO: look at this disassembly:
-
-      LD     V1, #0A          ; 610A  @ 206
-      LD     I,  #22C         ; A22C  @ 208
-      DRW    V0, V1, #8       ; D018  @ 20A
-
-I think it would be better to use decimal numbers for some of
-the instructions: disassemble the 610A as `LD V1, 10` and
-the D018 as `DRW V0, V1, 8` The A22C can stay as `LD I, #22C`
-because the #22C is an address.
-
-It just gets too difficult to read when the literals are in hex.
-(perhaps have a command line switch to revert to the hex values...)
-
 
 TODO: It choked on the [5-quirks][] test ROM in Timendus's suite:
 
@@ -54,7 +40,7 @@ out from there that #5AC is also reachable and carry on from there.
 
 #include "chip8.h"
 
-#define MAX_BRANCHES	64
+#define MAX_BRANCHES	256
 
 #define REACHABLE(addr) (reachable[(addr) >> 3] & (1 << ((addr) & 0x07)))
 #define SET_REACHABLE(addr) reachable[(addr) >> 3] |= (1 << ((addr) & 0x07))
@@ -187,7 +173,7 @@ void c8_disasm() {
 			case 0x0000:
 				if(opcode == 0x00E0) sprintf(buffer,"CLS");
 				else if(opcode == 0x00EE) sprintf(buffer,"RET");
-				else if((opcode & 0xFFF0) == 0x00C0) sprintf(buffer,"SCD    #%01X", nibble);
+				else if((opcode & 0xFFF0) == 0x00C0) sprintf(buffer,"SCD    %d", nibble);
 				else if(opcode == 0x00FB) sprintf(buffer,"SCR");
 				else if(opcode == 0x00FC) sprintf(buffer,"SCL");
 				else if(opcode == 0x00FD) sprintf(buffer,"EXIT");
@@ -197,11 +183,11 @@ void c8_disasm() {
 			break;
 			case 0x1000: sprintf(buffer,"JP     L%03X", nnn); break;
 			case 0x2000: sprintf(buffer,"CALL   L%03X", nnn); break;
-			case 0x3000: sprintf(buffer,"SE     V%1X, #%02X", x, kk); break;
-			case 0x4000: sprintf(buffer,"SNE    V%1X, #%02X", x, kk); break;
+			case 0x3000: sprintf(buffer,"SE     V%1X, %d", x, kk); break;
+			case 0x4000: sprintf(buffer,"SNE    V%1X, %d", x, kk); break;
 			case 0x5000: sprintf(buffer,"SE     V%1X, V%1X", x, y); break;
-			case 0x6000: sprintf(buffer,"LD     V%1X, #%02X", x, kk); break;
-			case 0x7000: sprintf(buffer,"ADD    V%1X, #%02X", x, kk); break;
+			case 0x6000: sprintf(buffer,"LD     V%1X, %d", x, kk); break;
+			case 0x7000: sprintf(buffer,"ADD    V%1X, %d", x, kk); break;
 			case 0x8000: {
 				switch(nibble) {
 					case 0x0: sprintf(buffer,"LD     V%1X, V%1X", x, y); break;
@@ -219,7 +205,7 @@ void c8_disasm() {
 			case 0xA000: sprintf(buffer,"LD     I,  #%03X", nnn); break;
 			case 0xB000: sprintf(buffer,"JP     V0, #%03X", nnn); break;
 			case 0xC000: sprintf(buffer,"RND    V%1X, #%02X", x, kk); break;
-			case 0xD000: sprintf(buffer,"DRW    V%1X, V%1X, #%01X", x, y, nibble); break;
+			case 0xD000: sprintf(buffer,"DRW    V%1X, V%1X, %d", x, y, nibble); break;
 			case 0xE000: {
 				if(kk == 0x9E) {
 					sprintf(buffer,"SKP    V%1X", x);
