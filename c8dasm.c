@@ -1,8 +1,48 @@
 /* CHIP-8 Disassembler.
 
-TODO: It choked on the [5-quirks][] test ROM in Timendus's suite.
-It seems there is a #0000 at address #222 that is a jump destination, and it
-triggers a "bad jump" error.
+TODO: look at this disassembly:
+
+      LD     V1, #0A          ; 610A  @ 206
+      LD     I,  #22C         ; A22C  @ 208
+      DRW    V0, V1, #8       ; D018  @ 20A
+
+I think it would be better to use decimal numbers for some of
+the instructions: disassemble the 610A as `LD V1, 10` and
+the D018 as `DRW V0, V1, 8` The A22C can stay as `LD I, #22C`
+because the #22C is an address.
+
+It just gets too difficult to read when the literals are in hex.
+(perhaps have a command line switch to revert to the hex values...)
+
+
+TODO: It choked on the [5-quirks][] test ROM in Timendus's suite:
+
+To test the `Bxnn`, there's a BE00 at #5AA that will jump to either
+#E98 or #E9C depending on the quirk.
+(look for `jumpQuirk` in the original source)
+
+      LD     V0, #98          ; 6098  @ 5A6
+      LD     VE, #9C          ; 6E9C  @ 5A8
+      JP     V0, #E00         ; BE00  @ 5AA
+L5AC: db #A5, #D8, #F0, #65
+
+Either way, both paths jump back to a label `quirks-resume`, which is at #5AC,
+right after the BE00. The problem is that the disassembler isn't able to determine
+that #E98 and #E9C are reachable, and subsequently it can't tell that #5AC is
+reachable and disassemble anything after that.
+
+(determining which addresses are reachable from a `Bnnn` would involve starting at the
+BE00 and working backwards to determine what the register values are at that point,
+but I don't think that is possible.
+Besides, which register would also depend on exactly which quirk we're expecting).
+
+I think a possible solution might be to have a command line option through which the
+user can tell the disassembler that a certain address is supposed to be reachable.
+
+I'm thinking something like `-B E98,E9C`, which in our example will tell the
+disassembler that #E98 and #E9C are reachable. If all goes well, it would figure
+out from there that #5AC is also reachable and carry on from there.
+
 [5-quirks]: https://github.com/Timendus/chip8-test-suite/raw/main/bin/5-quirks.ch8
 */
 #include <stdio.h>
@@ -52,7 +92,7 @@ void c8_disasm() {
 			SET_REACHABLE(addr);
 
 			uint16_t opcode = c8_opcode(addr);
-			if(addr < PROG_OFFSET || !opcode) {
+			if(addr < PROG_OFFSET ) {
 				/* Program ended up where it shouldn't; assumes the RAM is initialised to 0 */
 				c8_message("error: bad jump: program at #%03X\n",addr);
 				return;
@@ -153,6 +193,7 @@ void c8_disasm() {
 				else if(opcode == 0x00FD) sprintf(buffer,"EXIT");
 				else if(opcode == 0x00FE) sprintf(buffer,"LOW");
 				else if(opcode == 0x00FF) sprintf(buffer,"HIGH");
+				else sprintf(buffer,"SYS    #%03X", nnn);
 			break;
 			case 0x1000: sprintf(buffer,"JP     L%03X", nnn); break;
 			case 0x2000: sprintf(buffer,"CALL   L%03X", nnn); break;

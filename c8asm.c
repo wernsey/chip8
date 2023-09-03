@@ -122,8 +122,8 @@
 
 #define TOK_SIZE    64
 
-#define MAX_DEFS    256
-#define MAX_LOOKUP  256
+#define MAX_DEFS    512
+#define MAX_LOOKUP  2048
 
 typedef enum {
 	SYM_END,
