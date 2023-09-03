@@ -212,3 +212,17 @@ This code is licensed under the [Apache license version 2](http://www.apache.org
     See the License for the specific language governing permissions and
     limitations under the License.
 ```
+
+## TODO/Roadmap/Ideas
+
+* [ ] I really need to fix the "Display wait" quirk. See [Timendus][]'s 5 `5-quirks.ch8` test.
+* [ ] The quirks need to be in a flags variable so that they can be controlled at runtime
+* [ ] The assembler needs an `include "file.asm"` directive.
+* [ ] I should consider a `string "hello"` directive in the assembler, that places a null
+      terminated string in the bytecode. Users might be able to display the text at some point
+      if you have the right sprites; [Octo][] does it.
+* [ ] Allow for some hooks in the library to let the `SYS nnn` (`0nnn`) instructions break
+      out into the environment outside. It might be neat if you embed a CHIP-8 interpreter
+      in another program and call out to it as a sort of scripting language.
+* [ ] Breakpoints in the debugger
+* [ ] ~~A `.map` file output by the assembler...~~

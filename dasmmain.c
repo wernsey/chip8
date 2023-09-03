@@ -10,6 +10,7 @@ static void usage(const char *name) {
 	printf("where options are:\n");
 	printf(" -d             : Dump bytes\n");
 	printf(" -a             : Dump bytes with addresses\n");
+	printf(" -r address     : Marks `address` as reachable\n");
 	printf(" -v             : Verbose mode\n");
 }
 
@@ -18,12 +19,21 @@ int main(int argc, char *argv[]) {
 	int opt, dump = 0;
 	const char *infile = NULL;
 
-	while((opt = getopt(argc, argv, "vda?")) != -1) {
+	c8_reset();
+	c8_disasm_start();
+
+	while((opt = getopt(argc, argv, "vdar:?")) != -1) {
 		switch(opt) {
 			case 'd': dump = 1; break;
 			case 'a': dump = 2; break;
 			case 'v': {
 				c8_verbose++;
+			} break;
+			case 'r': {
+				uint16_t addr = strtol(optarg, NULL, 0);
+				if(addr > TOTAL_RAM)
+					fprintf(stderr, "error: Invalid address #%04X\n", addr);
+				c8_disasm_reachable(addr);
 			} break;
 			case '?' : {
 				usage(argv[0]);
@@ -37,7 +47,6 @@ int main(int argc, char *argv[]) {
     }
 	infile = argv[optind++];
 
-	c8_reset();
 
 	if(!c8_load_file(infile)) {
 		fprintf(stderr, "error: Unable to load %s\n", infile);

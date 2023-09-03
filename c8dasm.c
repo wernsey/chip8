@@ -1,11 +1,10 @@
 /* CHIP-8 Disassembler.
 
 
-TODO: It choked on the [5-quirks][] test ROM in Timendus's suite:
+It choked on the [5-quirks][] test ROM in Timendus's suite:
 
-To test the `Bxnn`, there's a BE00 at #5AA that will jump to either
-#E98 or #E9C depending on the quirk.
-(look for `jumpQuirk` in the original source)
+To test the `Bxnn`, there's a BE00 at #5AA that will jump to either #E98 or #E9C
+depending on the quirk (look for `jumpQuirk` in the original source).
 
       LD     V0, #98          ; 6098  @ 5A6
       LD     VE, #9C          ; 6E9C  @ 5A8
@@ -17,19 +16,12 @@ right after the BE00. The problem is that the disassembler isn't able to determi
 that #E98 and #E9C are reachable, and subsequently it can't tell that #5AC is
 reachable and disassemble anything after that.
 
-(determining which addresses are reachable from a `Bnnn` would involve starting at the
-BE00 and working backwards to determine what the register values are at that point,
-but I don't think that is possible.
-Besides, which register would also depend on exactly which quirk we're expecting).
-
-I think a possible solution might be to have a command line option through which the
-user can tell the disassembler that a certain address is supposed to be reachable.
-
-I'm thinking something like `-B E98,E9C`, which in our example will tell the
-disassembler that #E98 and #E9C are reachable. If all goes well, it would figure
-out from there that #5AC is also reachable and carry on from there.
+So there's now a `-r` command line option that will use the `c8_disasm_reachable()`
+function to tell us that an address is reachable. In our example you can use
+`-r 0xE98 -r 0xE9C`, which will tell the disassembler that #E98 and #E9C are reachable.
 
 [5-quirks]: https://github.com/Timendus/chip8-test-suite/raw/main/bin/5-quirks.ch8
+
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,24 +34,46 @@ out from there that #5AC is also reachable and carry on from there.
 
 #define MAX_BRANCHES	256
 
+/* If you have a run of ZERO_RUNS or more 0x00 bytes in the data output,
+just skip it... */
+#define ZERO_RUNS 	16
+
 #define REACHABLE(addr) (reachable[(addr) >> 3] & (1 << ((addr) & 0x07)))
 #define SET_REACHABLE(addr) reachable[(addr) >> 3] |= (1 << ((addr) & 0x07))
+
+#define TOUCHED(addr) (touched[(addr) >> 3] & (1 << ((addr) & 0x07)))
+#define TOUCH(addr) touched[(addr) >> 3] |= (1 << ((addr) & 0x07))
+
 #define IS_LABEL(addr) (labels[(addr) >> 3] & (1 << ((addr) & 0x07)))
 #define SET_LABEL(addr) labels[(addr) >> 3] |= (1 << ((addr) & 0x07))
+
+static uint16_t branches[MAX_BRANCHES], bsp;
+uint8_t labels[TOTAL_RAM/8];
+
+void c8_disasm_start() {
+	bsp = 0;
+	memset(labels, 0, sizeof labels);
+}
+
+void c8_disasm_reachable(uint16_t addr) {
+	if(addr > TOTAL_RAM)
+		return;
+	branches[bsp++] = addr;
+	SET_LABEL(addr);
+}
 
 void c8_disasm() {
 	/* Some of the reported errors can conceivably happen
 		if you try to disassembe a buggy program */
-	uint16_t branches[MAX_BRANCHES];
-	int bsp = 0,
-		odata = 0,
+	uint16_t addr, max_addr = 0, run, run_end = 0;
+	int odata = 0,
 		out = 0;
+
 	uint8_t reachable[TOTAL_RAM/8];
-	uint16_t addr, max_addr = 0;
-	uint8_t labels[TOTAL_RAM/8];
+	uint8_t touched[TOTAL_RAM/8];
 
 	memset(reachable, 0, sizeof reachable);
-	memset(labels, 0, sizeof labels);
+	memset(touched, 0, sizeof touched);
 
 	/* Step 1: Determine which instructions are reachable.
 	We run through the program instruction by instruction.
@@ -125,6 +139,10 @@ void c8_disasm() {
 				/* I don't think we can realistically disassemble this, because
 					we can't know V0 without actually running the program. */
 				break;
+			} else if((opcode & 0xF000) == 0xA000) {
+				/* Mark the address as touched so that it don't get removed by the code
+				that hides the long runs of 0x00 bytes. */
+				TOUCH(nnn);
 			}
 		}
 		if(addr >= TOTAL_RAM - 1) {
@@ -145,6 +163,25 @@ void c8_disasm() {
 		if(!REACHABLE(addr)) {
 			if(addr <= max_addr) {
 				/* You've reached data that is non-null, but not code either. */
+				if(addr < run_end)
+					continue;
+
+				/* Find out a run of 0x00 bytes that are not code (REACHABLE) and not
+				data bytes that are referenced by a `LD I,nnn` (`Annn`) instruction (TOUCHED) */
+				for(run = addr; run < TOTAL_RAM && !REACHABLE(run) && !TOUCHED(run) && !c8_get(run); run++);
+
+				if(run - addr > ZERO_RUNS) {
+					if(odata) {
+						c8_message("\n");
+						odata = 0;
+					}
+					c8_message(" ; skipped run of %u #00 bytes at #%04X...\n", run - addr, addr);
+					c8_message("offset #%04X \n", run);
+
+					run_end = run;
+					continue;
+				}
+
 				if(!odata++) {
 					c8_message("L%03X: db #%02X", addr, c8_get(addr));
 				} else {

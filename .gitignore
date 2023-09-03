@@ -30,6 +30,8 @@ README.html
 
 # http://devernay.free.fr/hacks/chip8/GAMES.zip
 GAMES
+roms
+tests
 
 .vscode
 *.ch8

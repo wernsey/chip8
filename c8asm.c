@@ -2,6 +2,8 @@
  *  CHIP8 assembler
  * ==================
  *
+ * ![toc]
+ *
  * ## Overview
  *
  * The syntax is mostly based on that of [Cowgod's Chip-8 Technical Reference v1.0][cowgod],
@@ -186,7 +188,6 @@ static const char *inst_names[] = {
 	"rstrx",
 };
 
-//static int sym;
 typedef struct {
 	const char * in;
 	const char * last;

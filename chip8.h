@@ -281,7 +281,10 @@ int c8_message(const char *msg, ...);
  */
 extern char c8_message_text[];
 
-/** ## Assembler */
+/**
+ * ## Assembler
+ *
+ */
 
 /** `int c8_assemble(const char *text);`  \
  * Assembles a block of text into the interpreter's RAM.
@@ -295,7 +298,30 @@ extern char c8_message_text[];
  */
 int c8_assemble(const char *text);
 
-/** ## Disassembler */
+/**
+ * ## Disassembler
+ *
+ */
+
+/** `void c8_disasm_start();`  \
+ * Initializes the variables used by the disassembler to track its state.
+ */
+void c8_disasm_start();
+
+/** `void c8_disasm_reachable(uint16_t addr)`  \
+ *
+ * Marks an address in the program as reachable through a jump instruction.
+ *
+ * The disassembler follows the different branches in a program to determine
+ * which instructions are reachable. It does this to determine which bytes in
+ * the program are code and which are data. Unfortunately this does not work for
+ * the `JP V0, nnn` (`Bnnn`) instruction, because it won't know what the value
+ * in `V0` is (and `Bnnn`'s behaviour also depends on the `QUIRKS_JUMP` quirk).
+ *
+ * If you can determine the `Bnnn`'s intended destination, you could mark
+ * that destination as reachable, and rerun the disassembler.
+ */
+void c8_disasm_reachable(uint16_t addr);
 
 /** `void c8_disasm();`  \
  * Disassembles the program currently in the interpreter's RAM.
