@@ -22,12 +22,12 @@
  * * `DT` for the delay timer register.
  * * `ST` for the sound timer register.
  * * `K` for the key press register[^fake].
- * * `F` for the address of fonts[^fake].
+ * * `F` for the address of the 8&times;5 fonts[^fake].
  * * `B` for storing BCD values[^fake].
- * * `HF`
- * * `R`
+ * * `HF` for the address of the larger 8&times;10 fonts[^fake].
+ * * `R` for the reserved RPL storage space[^fake][^rpl].
  *
- * [^fake]: there isn't actually registers `K`, `F` and `B`, but they're used as in special syntax for [the `ld` instructions](#ld---load).
+ * [^fake]: there aren't actual registers `K`, `F`, `B`, `HF` and `R` in the interpreter, in but they're used in special syntax, particularly the `LD` instruction.
  *
  * These keywords are also reserved:
  *
@@ -64,46 +64,46 @@
  * |  00E0              |   `cls`           | Clear Screen                                       |
  * |  00EE              |   `ret`           | Return                                             |
  * |  1nnn              |   `jp addr`       | Jump to `addr`                                     |
- * |  Bnnn              |   `jp v0, addr`   | Jump to `v0 + addr`                                |
  * |  2nnn              |   `call addr`     | Call routine at `addr`                             |
  * |  3nkk              |   `se Vn kk`      | Skip if `Vn` equals `kk`                           |
- * |  5xy0              |   `se Vx Vy`      | Skip if `Vn` equals `Vy`                           |
  * |  4nkk              |   `sne Vn kk`     | Skip if `Vn` does not equal `kk`                   |
- * |  9xy0              |   `sne Vx Vy`     | Skip if `Vn` does not equal `Vy`                   |
- * |  Annn              |   `ld I, nnn`     | Loads `nnn` into register `I`                      |
- * |  Fx07              |   `ld Vx, DT`     | Loads the delay timer into register `Vx`           |
- * |  Fx15              |   `ld DT, Vx`     | Loads register `Vx` into the delay timer           |
- * |  Fx18              |   `ld ST, Vx`     | Loads register `Vx` into the sound timer           |
- * |  Fx29              |   `ld F, Vx`      | Load hex value of `Vx` into `I`                    |
- * |  Fx33              |   `ld B, Vx`      | Load BCD value of `Vx` into `I`                    |
- * |  Fx55              |   `ld [I], Vx`    | Save `V0` through `Vx` to the address in `I`       |
- * |  Fx65              |   `ld Vx, [I]`    | Restores `V0` through `Vx` from the address in `I` |
+ * |  5xy0              |   `se Vx Vy`      | Skip if `Vn` equals `Vy`                           |
  * |  6xkk              |   `ld Vx, kk`     | Loads a literal value `kk` into `Vx`               |
- * |  8xy0              |   `ld Vx, Vy`     | Loads register `Vy` into `Vx`                      |
- * |  Fn0A              |   `ld Vn, K`      | loads a key pressed into `Vn`                      |
- * |  Fx30[^super]      |   `ld HF, Vx`     | Loads register `Vx` into `I` as a large hex value  |
- * |  Fx75[^super]      |   `ld R, Vx`      | Save `V0`-`Vx` ?                                   |
- * |  Fx85[^super]      |   `ld Vx, R`      | Restore `V0`-`Vx` ?                                |
  * |  7nkk              |   `add Vn, kk`    | Add `kk` to register `Vx`                          |
- * |  8xy4              |   `add Vx, Vy`    | Add the value in `Vy` to register `Vx`             |
- * |  Fn1E              |   `add I, Vn`     | Add the value in `Vn` to register `I`              |
+ * |  8xy0              |   `ld Vx, Vy`     | Loads register `Vy` into `Vx`                      |
  * |  8xy1              |   `or Vx, Vy`     | Bitwise OR the value in `Vy` with register `Vx`    |
  * |  8xy2              |   `and Vx, Vy`    | Bitwise AND the value in `Vy` with register `Vx`   |
  * |  8xy3              |   `xor Vx, Vy`    | Bitwise XOR the value in `Vy` with register `Vx`   |
+ * |  8xy4              |   `add Vx, Vy`    | Add the value in `Vy` to register `Vx`             |
  * |  8xy5              |   `xor Vx, Vy`    | Subtract the value in `Vy` from register `Vx`      |
  * |  8xy6              |   `shr Vx [, Vy]` | Shift `Vx` to the right with the value in `Vy`     |
  * |  8xy7              |   `subn Vx, Vy`   | Subtract the value in `Vy` from `Vx`, no carry     |
  * |  8xyE              |   `shl Vx [, Vy]` | Shift `Vx` to the left with the value in `Vy`      |
+ * |  9xy0              |   `sne Vx Vy`     | Skip if `Vn` does not equal `Vy`                   |
+ * |  Annn              |   `ld I, nnn`     | Loads `nnn` into register `I`                      |
+ * |  Bnnn              |   `jp v0, addr`   | Jump to `v0 + addr`                                |
  * |  Cnkk              |   `rnd Vn, kk`    | random number AND `kk` into `Vn`                   |
  * |  Dxyn              |   `drw Vx, Vy, n` | Draw a sprite of `n` rows at `Vx,Vy`               |
  * |  En9E              |   `skp Vn`        | Skip if key in `Vn` pressed                        |
  * |  EnA1              |   `sknp Vn`       | Skip if key in `Vn` not pressed                    |
+ * |  Fn0A              |   `ld Vn, K`      | loads a key pressed into `Vn`                      |
+ * |  Fn1E              |   `add I, Vn`     | Add the value in `Vn` to register `I`              |
+ * |  Fx07              |   `ld Vx, DT`     | Loads the delay timer into register `Vx`           |
+ * |  Fx15              |   `delay Vx`      | Loads register `Vx` into the delay timer           |
+ * |  Fx18              |   `sound Vx`      | Loads register `Vx` into the sound timer           |
+ * |  Fx29              |   `hex Vx`        | Loads the 8&times;5 font sprite of `Vx` into `I`   |
+ * |  Fx30[^super]      |   `hexx Vx`       | Loads the 8&times;10 font sprite of `Vx` into `I`  |
+ * |  Fx33              |   `bcd Vx`        | Load BCD value of `Vx` into `I` to `I+2`           |
+ * |  Fx55              |   `stor Vx`       | Stores `V0` through `Vx` to the address in `I`     |
+ * |  Fx65              |   `rstr Vx`       | Restores `V0` through `Vx` from the address in `I` |
+ * |  Fx75[^super]      |   `storx Vx`      | Stores `V0` through `Vx` to the reserved space     |
+ * |  Fx85[^super]      |   `rstrx Vx`      | Restores `V0` through `Vx` from the reserved space |
  * |  00Cn[^super]      |   `scd n`         | Scroll down `n` pixels                             |
  * |  00FB[^super]      |   `scr`           | Scroll right                                       |
  * |  00FC[^super]      |   `scl`           | Scroll Left                                        |
  * |  00FD[^super]      |   `exit`          | Exits the SuperChip48 interpreter                  |
  * |  00FE[^super]      |   `low`           | Low res mode                                       |
- * |  00FF[^super]      |   `high`          | Enable 128x64 high-res mode                        |
+ * |  00FF[^super]      |   `high`          | Enable 128&times;64 high-res mode                  |
  *
  * [^super]: Denotes a Super Chip48 instruction.
  */
@@ -144,6 +144,7 @@ typedef enum {
 	SYM_DB,
 	SYM_DW
 } SYMBOL;
+
 /* List of instruction names. */
 static const char *inst_names[] = {
 	"add",
@@ -171,7 +172,18 @@ static const char *inst_names[] = {
 	"scl",
 	"exit",
 	"low",
-	"high"
+	"high",
+	/* Octo inspired Mnemonics: */
+	"delay",
+	"sound",
+	"hex",
+	"hexx",
+	"bcd",
+	"key",
+	"stor",
+	"rstr",
+	"storx",
+	"rstrx",
 };
 
 //static int sym;
@@ -290,7 +302,6 @@ static int get_precedence(const char * expr){
 			return 2;
 		case '-':
 		case '+':
-	//	case '0'...'9':
 			return 3;
 		case '*':
 		case '/':
@@ -640,7 +651,6 @@ scan_start:
 				stepper->sym = SYM_DW;
 
 			else {
-				//while (*stepper->in == ' ') stepper->in++;
 				if (is_arith(*stepper->in)){
 					char arith_exp[64];
 					copy_arithmetic_expression(arith_exp, &stepper->in);
@@ -661,7 +671,6 @@ scan_start:
 			}
 		}
 	} else if(is_arith(*stepper->in) ) {
-		//sprintf(stepper->token,"%ld",evaluate_arithmetic_expression(&stepper->in, stepper->linenum));
 		copy_arithmetic_expression(stepper->token, &stepper->in);
 		stepper->sym=SYM_NUMBER;
 	} else {
@@ -876,7 +885,12 @@ int c8_assemble(const char *text) {
 		 */
 		case SYM_IDENTIFIER:
 			add_label(stepper.token, stepper.linenum);
-			expect(&stepper, ':');
+			SYMBOL sym = nextsym(&stepper);
+			if(sym != ':') {
+				/* It's more likely that the user got the mnemonic wrong than forgot the ':' */
+				exit_error("error:%d: Unknown instruction `%s`\n", stepper.linenum, lookup[n_lookup-1].label);
+			}
+			nextsym(&stepper);
 		break;
 		case SYM_INSTRUCTION:
 			/**
@@ -1000,24 +1014,42 @@ int c8_assemble(const char *text) {
 			 *
 			 * Load instructions:
 			 *
-			 * * `ld I, nnn` - loads the value `nnn` into register `I` (`Annn`).
-			 * * `ld Vx, DT` - loads the value of the _Delay Timer_ into `Vx` (`Fx07`).
-			 * * `ld DT, Vx` - loads the value in `Vx` into the _Delay Timer_ (`Fx15`).
-			 * * `ld ST, Vx` - loads the value in `Vx` into the _Sound Timer_ (`Fx18`).
-			 * * `ld F, Vx` - loads the location of the font sprite for `Vx` into `I` (`Fx29`).
-			 * * `ld B, Vx` - stores the BCD representation of `Vx` in the memory locations `I`, `I+1` and `I+2` (`Fx33`).
-			 * * `ld [I], Vx` - saves `V0` through `Vx` to the memory addresses `I` through `I+x` (`Fx55`).
-			 * * `ld Vx, [I]` - loads `V0` through `Vx` from the memory addresses `I` through `I+x` (`Fx65`).
+			 * * `ld I, nnn` - loads the 12-bit literal value `nnn` into register `I` (`Annn`).
 			 * * `ld Vx, kk` - loads the literal value `kk` into `Vx` (`6xkk`).
 			 * * `ld Vx, Vy` - loads the value in `Vy` into `Vx` (`8xy0`).
-			 * * `ld Vx, K` - loads a key pressed into `Vx` (`Fx0A`).
+			 * * `ld Vx, DT` - loads the value of the _Delay Timer_ into `Vx` (`Fx07`).
+			 *
+			 * These variations are provided for compatibility with [Cowgod][]'s syntax, but
+			 * the alternative syntax should be preferred:
+			 *
+			 * * `ld DT, Vx` - loads the value in `Vx` into the _Delay Timer_ (`Fx15`).
+			 * 		Use [`delay Vx`](#delay---delay) instead.
+			 * * `ld ST, Vx` - loads the value in `Vx` into the _Sound Timer_ (`Fx18`).
+			 * 		Use [`sound Vx`](#sound---play-a-sound) instead.
+			 * * `ld F, Vx` - loads the location of the 8&times;5 font sprite for `Vx` into `I` (`Fx29`).
+			 * 		Use [`hex Vx `](#hex---prepare-a-hex-sprite) instead.
+			 * * `ld B, Vx` - stores the BCD representation of `Vx` in the memory locations `I`, `I+1` and `I+2` (`Fx33`).
+			 * 		Use [`bcd Vx`](#bcd---bcd-representation) instead.
+			 * * `ld [I], Vx` - saves `V0` through `Vx` to the memory addresses `I` through `I+x` (`Fx55`).
+			 * 		Use [`stor Vx`](#stor---store-registers) instead.
+			 * * `ld Vx, [I]` - loads `V0` through `Vx` from the memory addresses `I` through `I+x` (`Fx65`).
+			 * 		Use [`rstr Vx`](#rstr---restore-registers) instead.
+			 * * `ld Vx, K` - Waits for a keypress, then loads the key pressed into `Vx` (`Fx0A`).
+			 * 		Use [`key Vx`](#key---wait-for-key-press) instead.
 			 *
 			 * #### Super Chip48 LD additions
 			 *
-			 * * `ld HF, Vx` (`Fx30`)
-			 * * `ld R, Vx` (`Fx75`)
-			 * * `ld Vx, R` (`Fx85`)
+			 * These forms are also provided for compatibility with [Cowgod][]'s syntax, but
+			 * the alternative syntax should be preferred:
 			 *
+			 * * `ld HF, Vx` - loads the location of the larger 8&times;10 font sprite for `Vx` into `I` (`Fx30`).
+			 * 		Use [`hexx Vx`](#hexx---prepare-a-large-hex-sprite) instead.
+			 * * `ld R, Vx` - saves `V0` through `Vx` to a special reserved memory space `R`[^rpl]  (`Fx75`)
+			 * 		Use [`storx Vx`](#storx---store-registers-extended) instead.
+			 * * `ld Vx, R` - loads `V0` through `Vx` from the special reserved memory space `R`[^rpl] (`Fx85`)
+			 * 		Use [`rstrx Vx`](#rstrx---restore-registers-extended) instead.
+			 *
+			 * [^rpl]: The original SUPER-CHIP stored these in the calculator on which it ran's RPL registers
 			 */
 			} else if(!strcmp("ld", stepper.token)) {
 				nextsym(&stepper);
@@ -1215,7 +1247,8 @@ int c8_assemble(const char *text) {
 			/**
 			 * ### DRW - Draw Sprite
 			 *
-			 * `drw Vx, Vy, n` maps to the `Dxyn` Chip8 instruction.
+			 * `drw Vx, Vy, n` - Draws the `n`-byte sprite at memory location `I`
+			 * to the screen position `Vx`,`Vy`. (`Dxyn`)
 			 */
 			}  else if(!strcmp("drw", stepper.token)) {
 				nextsym(&stepper);
@@ -1227,7 +1260,7 @@ int c8_assemble(const char *text) {
 			/**
 			 * ### SKP - Skip if Key Pressed
 			 *
-			 * `skp Vn` maps to the `En9E` Chip8 instruction.
+			 * `skp Vn` - Skips the next instruction if the key identified by `Vn` is pressed (`En9E`)
 			 */
 			} else if(!strcmp("skp", stepper.token)) {
 				nextsym(&stepper);
@@ -1235,18 +1268,77 @@ int c8_assemble(const char *text) {
 			/**
 			 * ### SKNP - Skip if Key Not Pressed
 			 *
-			 * `sknp register` maps to the `EnA1` Chip8 instruction.
+			 * `sknp Vn` - Skips the next instruction if the key identified by `Vn` is not pressed (`EnA1`)
 			 */
 			} else if(!strcmp("sknp", stepper.token)) {
 				nextsym(&stepper);
 				emit_w(&stepper, 0xE0A1 | (get_register(&stepper) << 8));
+			/**
+			 * ### DELAY - Delay
+			 *
+			 * `delay Vx` - loads the value in `Vx` into the _Delay Timer_ (`Fx15`).
+			 */
+			} else if(!strcmp("delay", stepper.token)) {
+				nextsym(&stepper);
+				emit_w(&stepper, 0xF015 | (get_register(&stepper) << 8));
+			/**
+			 * ### SOUND - Play a sound
+			 *
+			 * `sound Vx` - loads the value in `Vx` into the _Sound Timer_ (`Fx18`).
+			 */
+			} else if(!strcmp("sound", stepper.token)) {
+				nextsym(&stepper);
+				emit_w(&stepper, 0xF018 | (get_register(&stepper) << 8));
+			/**
+			 * ### HEX - prepare a hex sprite
+			 *
+			 * `hex Vx` - loads the location of the 8&times;5 font sprite for the hex value
+			 * represented by `Vx` into `I` (`Fx29`).
+			 *
+			 */
+			} else if(!strcmp("hex", stepper.token)) {
+				nextsym(&stepper);
+				emit_w(&stepper, 0xF029 | (get_register(&stepper) << 8));
+			/**
+			 * ### BCD - BCD representation
+			 *
+			 * `bcd Vx` - stores the BCD representation of `Vx` in the memory locations `I`, `I+1` and `I+2` (`Fx33`).
+			 *
+			 */
+			} else if(!strcmp("bcd", stepper.token)) {
+				nextsym(&stepper);
+				emit_w(&stepper, 0xF033 | (get_register(&stepper) << 8));
+			/**
+			 * ### KEY - Wait for key press
+			 *
+			 * `key Vx` - Waits for a keypress, then loads the key pressed into `Vx` (`Fx0A`).
+			 */
+			} else if(!strcmp("key", stepper.token)) {
+				nextsym(&stepper);
+				emit_w(&stepper, 0xF00A | (get_register(&stepper) << 8));
+			/**
+			 * ### STOR - Store registers
+			 *
+			 * `stor Vx` - Stores registers `V0` through `Vx` to the memory addresses `I` through `I+x` (`Fx55`).
+			 */
+			} else if(!strcmp("stor", stepper.token)) {
+				nextsym(&stepper);
+				emit_w(&stepper, 0xF055 | (get_register(&stepper) << 8));
+			/**
+			 * ### RSTR - Restore registers
+			 *
+			 * `rstr Vx` - Restores registers `V0` through `Vx` from the memory addresses `I` through `I+x` (`Fx65`).
+			 */
+			} else if(!strcmp("rstr", stepper.token)) {
+				nextsym(&stepper);
+				emit_w(&stepper, 0xF065 | (get_register(&stepper) << 8));
 			/**
 			 *
 			 * ## Super Chip48 Instructions
 			 *
 			 * ### SCD - Scroll Down
 			 *
-			 * `scd n` maps to the `00Cn` Chip8 instruction.
+			 * `scd n` - scrolls the screen down by `n` rows (`00Cn`)
 			 *
 			 */
 			} else if(!strcmp("scd", stepper.token)) {
@@ -1255,24 +1347,35 @@ int c8_assemble(const char *text) {
 			/**
 			 * ### SCR - Scroll Right
 			 *
-			 * `scr` maps to the `00FB` Chip8 instruction.
+			 * `scr` - scrolls the screen to the right by 4 pixels (`00FB`)
 			 */
 			} else if(!strcmp("scr", stepper.token)) {
 				emit_w(&stepper, 0x00FB);
 			/**
 			 * ### SCL - Scroll Left
 			 *
-			 * `scl` maps to the `00FC` Chip8 instruction.
+			 * `scl` - scrolls the screen to the left by 4 pixels (`00FC`)
 			 */
 			} else if(!strcmp("scl", stepper.token)) {
 				emit_w(&stepper, 0x00FC);
 			/**
 			 * ### EXIT - Exit
 			 *
-			 * `exit` maps to the `00FD` Chip8 instruction.
+			 * `exit` - stops the interpreter (`00FD`)
 			 */
 			} else if(!strcmp("exit", stepper.token)) {
 				emit_w(&stepper, 0x00FD);
+			/**
+			 * ### HEXX - prepare a large hex sprite
+			 *
+			 * `hexx Vx` - loads the location of the 8&times;10 font sprite of the hex value
+			 * represented by `Vx` into `I` (`Fx30`).
+			 *
+			 * See also the [`hex`](#hex---prepare-a-hex-sprite) instruction
+			 */
+			} else if(!strcmp("hexx", stepper.token)) {
+				nextsym(&stepper);
+				emit_w(&stepper, 0xF030 | (get_register(&stepper) << 8));
 			/**
 			 * ### LOW - Low Resolution Mode
 			 *
@@ -1287,6 +1390,26 @@ int c8_assemble(const char *text) {
 			 */
 			} else if(!strcmp("high", stepper.token)) {
 				emit_w(&stepper, 0x00FF);
+			/**
+			 * ### STORX - Store registers, extended
+			 *
+			 * `storx Vx` - Saves registers `V0` through `Vx` to a special reserved memory space `R`[^rpl]  (`Fx75`)
+			 *
+			 * See also the [`stor`](#stor---store-registers) instruction
+			 */
+			} else if(!strcmp("storx", stepper.token)) {
+				nextsym(&stepper);
+				emit_w(&stepper, 0xF075 | (get_register(&stepper) << 8));
+			/**
+			 * ### RSTRX - Restore registers, extended
+			 *
+			 * `rstrx Vx` - Restores registers `V0` through `Vx` from the special reserved memory space `R`[^rpl] (`Fx85`)
+			 *
+			 * See also the [`rstr`](#rstr---restore-registers) instruction
+			 */
+			} else if(!strcmp("rstrx", stepper.token)) {
+				nextsym(&stepper);
+				emit_w(&stepper, 0xF085 | (get_register(&stepper) << 8));
 			}
 
 			nextsym(&stepper);
@@ -1336,8 +1459,9 @@ int c8_assemble(const char *text) {
 /**
  * ## References
  *
- * * [Cowgod's Chip-8 Technical Reference v1.0](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM)
+ * * [Cowgod's Chip-8 Technical Reference v1.0][cowgod]
  * * The Octo project's [Chip8 reference PDF](https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/chip8ref.pdf) by John Earnest.
  * * The Octo project's [Mastering SuperChip](https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/SuperChip.md) reference.
  *
+ * [cowgod]: http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
  */

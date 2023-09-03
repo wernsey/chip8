@@ -147,59 +147,59 @@ void c8_disasm() {
 			case 0x0000:
 				if(opcode == 0x00E0) sprintf(buffer,"CLS");
 				else if(opcode == 0x00EE) sprintf(buffer,"RET");
-				else if((opcode & 0xFFF0) == 0x00C0) sprintf(buffer,"SCD  #%01X", nibble);
+				else if((opcode & 0xFFF0) == 0x00C0) sprintf(buffer,"SCD    #%01X", nibble);
 				else if(opcode == 0x00FB) sprintf(buffer,"SCR");
 				else if(opcode == 0x00FC) sprintf(buffer,"SCL");
 				else if(opcode == 0x00FD) sprintf(buffer,"EXIT");
 				else if(opcode == 0x00FE) sprintf(buffer,"LOW");
 				else if(opcode == 0x00FF) sprintf(buffer,"HIGH");
 			break;
-			case 0x1000: sprintf(buffer,"JP   L%03X", nnn); break;
-			case 0x2000: sprintf(buffer,"CALL L%03X", nnn); break;
-			case 0x3000: sprintf(buffer,"SE   V%1X, #%02X", x, kk); break;
-			case 0x4000: sprintf(buffer,"SNE  V%1X, #%02X", x, kk); break;
-			case 0x5000: sprintf(buffer,"SE   V%1X, V%1X", x, y); break;
-			case 0x6000: sprintf(buffer,"LD   V%1X, #%02X", x, kk); break;
-			case 0x7000: sprintf(buffer,"ADD  V%1X, #%02X", x, kk); break;
+			case 0x1000: sprintf(buffer,"JP     L%03X", nnn); break;
+			case 0x2000: sprintf(buffer,"CALL   L%03X", nnn); break;
+			case 0x3000: sprintf(buffer,"SE     V%1X, #%02X", x, kk); break;
+			case 0x4000: sprintf(buffer,"SNE    V%1X, #%02X", x, kk); break;
+			case 0x5000: sprintf(buffer,"SE     V%1X, V%1X", x, y); break;
+			case 0x6000: sprintf(buffer,"LD     V%1X, #%02X", x, kk); break;
+			case 0x7000: sprintf(buffer,"ADD    V%1X, #%02X", x, kk); break;
 			case 0x8000: {
 				switch(nibble) {
-					case 0x0: sprintf(buffer,"LD   V%1X, V%1X", x, y); break;
-					case 0x1: sprintf(buffer,"OR   V%1X, V%1X", x, y); break;
-					case 0x2: sprintf(buffer,"AND  V%1X, V%1X", x, y); break;
-					case 0x3: sprintf(buffer,"XOR  V%1X, V%1X", x, y); break;
-					case 0x4: sprintf(buffer,"ADD  V%1X, V%1X", x, y); break;
-					case 0x5: sprintf(buffer,"SUB  V%1X, V%1X", x, y); break;
-					case 0x6: sprintf(buffer,"SHR  V%1X, V%1X", x, y); break;
-					case 0x7: sprintf(buffer,"SUBN V%1X, V%1X", x, y); break;
-					case 0xE: sprintf(buffer,"SHL  V%1X, V%1X", x, y); break;
+					case 0x0: sprintf(buffer,"LD     V%1X, V%1X", x, y); break;
+					case 0x1: sprintf(buffer,"OR     V%1X, V%1X", x, y); break;
+					case 0x2: sprintf(buffer,"AND    V%1X, V%1X", x, y); break;
+					case 0x3: sprintf(buffer,"XOR    V%1X, V%1X", x, y); break;
+					case 0x4: sprintf(buffer,"ADD    V%1X, V%1X", x, y); break;
+					case 0x5: sprintf(buffer,"SUB    V%1X, V%1X", x, y); break;
+					case 0x6: sprintf(buffer,"SHR    V%1X, V%1X", x, y); break;
+					case 0x7: sprintf(buffer,"SUBN   V%1X, V%1X", x, y); break;
+					case 0xE: sprintf(buffer,"SHL    V%1X, V%1X", x, y); break;
 				}
 			} break;
-			case 0x9000: sprintf(buffer,"SNE  V%1X, V%1X", x, y); break;
-			case 0xA000: sprintf(buffer,"LD   I,  #%03X", nnn); break;
-			case 0xB000: sprintf(buffer,"JP   V0, #%03X", nnn); break;
-			case 0xC000: sprintf(buffer,"RND  V%1X, #%02X", x, kk); break;
-			case 0xD000: sprintf(buffer,"DRW  V%1X, V%1X, #%01X", x, y, nibble); break;
+			case 0x9000: sprintf(buffer,"SNE    V%1X, V%1X", x, y); break;
+			case 0xA000: sprintf(buffer,"LD     I,  #%03X", nnn); break;
+			case 0xB000: sprintf(buffer,"JP     V0, #%03X", nnn); break;
+			case 0xC000: sprintf(buffer,"RND    V%1X, #%02X", x, kk); break;
+			case 0xD000: sprintf(buffer,"DRW    V%1X, V%1X, #%01X", x, y, nibble); break;
 			case 0xE000: {
 				if(kk == 0x9E) {
-					sprintf(buffer,"SKP V%1X", x);
+					sprintf(buffer,"SKP    V%1X", x);
 				} else if(kk == 0xA1) {
-					sprintf(buffer,"SKNP V%1X", x);
+					sprintf(buffer,"SKNP   V%1X", x);
 				}
 			} break;
 			case 0xF000: {
 				switch(kk) {
-					case 0x07: sprintf(buffer,"LD   V%1X, DT", x); break;
-					case 0x0A: sprintf(buffer,"LD   V%1X, K", x); break;
-					case 0x15: sprintf(buffer,"LD   DT, V%1X", x); break;
-					case 0x18: sprintf(buffer,"LD   ST, V%1X", x); break;
-					case 0x1E: sprintf(buffer,"ADD  I,  V%1X", x); break;
-					case 0x29: sprintf(buffer,"LD   F,  V%1X", x); break;
-					case 0x33: sprintf(buffer,"LD   B,  V%1X", x); break;
-					case 0x55: sprintf(buffer,"LD   [I], V%1X", x); break;
-					case 0x65: sprintf(buffer,"LD   V%1X, [I]", x); break;
-					case 0x30: sprintf(buffer,"LD   HF, V%1X", x); break;
-					case 0x75: sprintf(buffer,"LD   R, V%1X", x); break;
-					case 0x85: sprintf(buffer,"LD   V%1X, R", x); break;
+					case 0x07: sprintf(buffer,"LD     V%1X, DT", x); break;
+					case 0x0A: sprintf(buffer,"KEY    V%1X", x); break;
+					case 0x15: sprintf(buffer,"DELAY  V%1X", x); break;
+					case 0x18: sprintf(buffer,"SOUND  V%1X", x); break;
+					case 0x1E: sprintf(buffer,"ADD    I,  V%1X", x); break;
+					case 0x29: sprintf(buffer,"HEX    V%1X", x); break;
+					case 0x33: sprintf(buffer,"BCD    V%1X", x); break;
+					case 0x55: sprintf(buffer,"STOR   V%1X", x); break;
+					case 0x65: sprintf(buffer,"RSTR   V%1X", x); break;
+					case 0x30: sprintf(buffer,"HEXX   V%1X", x); break;
+					case 0x75: sprintf(buffer,"STORX  V%1X", x); break;
+					case 0x85: sprintf(buffer,"RSTRX  V%1X", x); break;
 				}
 			} break;
 		}
@@ -209,9 +209,9 @@ void c8_disasm() {
 		}
 		if(IS_LABEL(addr) || !out) {
 			if(odata) c8_message("\n");
-			c8_message("L%03X: %-20s    ; %04X\n", addr, buffer, opcode);
+			c8_message("L%03X: %-20s    ; %04X  @ %03X\n", addr, buffer, opcode, addr);
 		} else
-			c8_message("      %-20s    ; %04X\n", buffer, opcode);
+			c8_message("      %-20s    ; %04X  @ %03X\n", buffer, opcode, addr);
 		out = 1;
 		odata = 0;
 	}
