@@ -63,7 +63,71 @@
  */
 #define MAX_MESSAGE_TEXT	128
 
-/** `extern int c8_verbose;`  \
+/**
+ * ## Quirks
+ *
+ * The definitions below determine how the Quirks, as defined in Timendus' [quirks-test][]
+ * are handled.
+ *
+ * Detailed explainations of the issues can be found in [langhoff][].
+ *
+ * Use the function `c8_set_quirks()` to a combination of the following flags bitwise-OR'ed together:
+ *
+ * * `QUIRKS_VF_RESET` - Controls whether the AND/OR/XOR instructions reset the VF register to 0.
+ *   * The original COSMAC CHIP8 performed these directly in the ALU, so VF was
+ *     always affected, but later implementations didn't.
+ *   * See [here](https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#logical-and-arithmetic-instructions).
+ * * `QUIRKS_MEM_CHIP8` - Controls whether the `I` register is incremented by the Fx55 and Fx65 instructions.
+ *   * The original COSMAC CHIP8 incremented the `I` register, but modern implementations don't.
+ *   * Don't use it if you're unsure, because that would be more compatible.
+ *   * See [here](https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#fx55-and-fx65-store-and-load-memory).
+ * * `QUIRKS_SHIFT` - If it is not set, `Vy` is copied into `Vx` when performing the `8xy6` and `8xyE` shift instructions.
+ *   * The original CHIP8 behaved this way, but later implementations didn't.
+ *   * See [here](https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#8xy6-and-8xye-shift).
+ *   * (Note to self: The INVADERS.ch8 game I found somewhere is an example of where the shifting
+ *     needs to be on)
+ * * `QUIRKS_JUMP` - The CHIP-48 and SUPER-CHIP implementations originally implemented the
+ *   instruction as Bxnn as a jump to `Vx + xnn` rather than as `V0 + xnn`
+ *   * (it may have been a mistake).
+ *   * See [here](https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#bnnn-jump-with-offset)
+ * * `QUIRKS_CLIPPING`
+ *   * I didn't actually see in the documentation under what circumstances the clipping would be off
+ *
+ * In addition, these constants are defined for convenience:
+ *
+ * * `QUIRKS_DEFAULT` - The default setting: It enables `VF Reset`, `Shift` and `Clipping`.
+ * * `QUIRKS_CHIP8` - Enables `VF Reset`, `Mem CHIP8`, `Disp Wait` and `Clipping` for the best compatibility with
+ *    the original CHIP8.
+ * * `QUIRKS_SCHIP` - Enables `Clipping`, `Shift` and `Jump` for the best compatibility with SUPER-CHIP.
+ *
+ * [langhoff]: https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
+ * [quirks-test]: https://github.com/Timendus/chip8-test-suite/tree/main#quirks-test
+ */
+#define QUIRKS_VF_RESET 	0x01
+#define QUIRKS_MEM_CHIP8	0x02
+#define QUIRKS_DISP_WAIT	0x04
+#define QUIRKS_CLIPPING	    0x08
+#define QUIRKS_SHIFT		0x10
+#define QUIRKS_JUMP		    0x20
+
+#define QUIRKS_DEFAULT	(QUIRKS_VF_RESET | QUIRKS_SHIFT | QUIRKS_CLIPPING)
+#define QUIRKS_CHIP8	(QUIRKS_VF_RESET | QUIRKS_MEM_CHIP8 | QUIRKS_DISP_WAIT | QUIRKS_CLIPPING)
+#define QUIRKS_SCHIP	(QUIRKS_CLIPPING | QUIRKS_SHIFT | QUIRKS_JUMP)
+
+/**
+ * `void c8_set_quirks(unsigned int q);`  \
+ */
+void c8_set_quirks(unsigned int q);
+
+/**
+ * `unsigned int c8_get_quirks();`  \
+ */
+unsigned int c8_get_quirks();
+
+/**
+ * ## Utilities
+ *
+ * `extern int c8_verbose;`  \
  * Set to non-zero to turn on verbose mode.
  *
  * The higher the value, the more verbose the output.

@@ -1193,6 +1193,13 @@ int c8_assemble(const char *text) {
 			 * ### SHR - Shift Right
 			 *
 			 * `shr Vx [, Vy]` maps to the `8xy6` Chip8 instruction.
+			 *
+			 * The assembler will translate `shr Vx` to `8xx6` to work both
+			 * in cases where the interpreter moves `Vy` into `Vx` before the
+			 * and shift and in cases where they don't.
+			 *
+			 * This is a well known quirk between different CHIP8 implementations.
+			 * [More information](https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#8xy6-and-8xye-shift).
 			 */
 			} else if(!strcmp("shr", stepper.token)) {
 				nextsym(&stepper);
@@ -1220,6 +1227,13 @@ int c8_assemble(const char *text) {
 			 * ### SHL - Shift Left
 			 *
 			 * `shl Vx [, Vy]` maps to the `8xyE` Chip8 instruction.
+			 *
+			 * The assembler will translate `shl Vx` to `8xxE` to work both
+			 * in cases where the interpreter moves `Vy` into `Vx` before the
+			 * and shift and in cases where they don't.
+			 *
+			 * This is a well known quirk between different CHIP8 implementations.
+			 * [More information](https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#8xy6-and-8xye-shift).
 			 */
 			} else if(!strcmp("shl", stepper.token)) {
 				nextsym(&stepper);
@@ -1235,7 +1249,9 @@ int c8_assemble(const char *text) {
 			/**
 			 * ### RND - Random number
 			 *
-			 * `rnd Vn, kk` maps to the `Cnkk` Chip8 instruction.
+			 * `rnd Vn, kk` - generates a random number masked with `kk` and stores it in `Vn` (`Cnkk`).
+			 *
+			 * It creates a random number that is bitwise AND'ed with `kk`.
 			 */
 			} else if(!strcmp("rnd", stepper.token)) {
 				nextsym(&stepper);
@@ -1372,7 +1388,7 @@ int c8_assemble(const char *text) {
 			 * `hexx Vx` - loads the location of the 8&times;10 font sprite of the hex value
 			 * represented by `Vx` into `I` (`Fx30`).
 			 *
-			 * See also the [`hex`](#hex---prepare-a-hex-sprite) instruction
+			 * See also the [`hex`](#hex---prepare-a-hex-sprite) instruction.
 			 */
 			} else if(!strcmp("hexx", stepper.token)) {
 				nextsym(&stepper);
@@ -1396,7 +1412,7 @@ int c8_assemble(const char *text) {
 			 *
 			 * `storx Vx` - Saves registers `V0` through `Vx` to a special reserved memory space `R`[^rpl]  (`Fx75`)
 			 *
-			 * See also the [`stor`](#stor---store-registers) instruction
+			 * See also the [`stor`](#stor---store-registers) instruction.
 			 */
 			} else if(!strcmp("storx", stepper.token)) {
 				nextsym(&stepper);
@@ -1406,7 +1422,7 @@ int c8_assemble(const char *text) {
 			 *
 			 * `rstrx Vx` - Restores registers `V0` through `Vx` from the special reserved memory space `R`[^rpl] (`Fx85`)
 			 *
-			 * See also the [`rstr`](#rstr---restore-registers) instruction
+			 * See also the [`rstr`](#rstr---restore-registers) instruction.
 			 */
 			} else if(!strcmp("rstrx", stepper.token)) {
 				nextsym(&stepper);
@@ -1463,6 +1479,8 @@ int c8_assemble(const char *text) {
  * * [Cowgod's Chip-8 Technical Reference v1.0][cowgod]
  * * The Octo project's [Chip8 reference PDF](https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/chip8ref.pdf) by John Earnest.
  * * The Octo project's [Mastering SuperChip](https://github.com/JohnEarnest/Octo/blob/gh-pages/docs/SuperChip.md) reference.
+ * * [Guide to making a CHIP-8 emulator][Langhoff] by Tobias V. Langhoff
  *
+ * [Langhoff]: https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#8xy6-and-8xye-shift
  * [cowgod]: http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
  */

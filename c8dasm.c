@@ -233,9 +233,19 @@ void c8_disasm() {
 					case 0x3: sprintf(buffer,"XOR    V%1X, V%1X", x, y); break;
 					case 0x4: sprintf(buffer,"ADD    V%1X, V%1X", x, y); break;
 					case 0x5: sprintf(buffer,"SUB    V%1X, V%1X", x, y); break;
-					case 0x6: sprintf(buffer,"SHR    V%1X, V%1X", x, y); break;
 					case 0x7: sprintf(buffer,"SUBN   V%1X, V%1X", x, y); break;
-					case 0xE: sprintf(buffer,"SHL    V%1X, V%1X", x, y); break;
+					case 0x6:
+						if(x == y)
+							sprintf(buffer,"SHR    V%1X", x);
+						else
+							sprintf(buffer,"SHR    V%1X, V%1X", x, y);
+					break;
+					case 0xE:
+						if(x == y)
+							sprintf(buffer,"SHL    V%1X", x);
+						else
+							sprintf(buffer,"SHL    V%1X, V%1X", x, y);
+					break;
 				}
 			} break;
 			case 0x9000: sprintf(buffer,"SNE    V%1X, V%1X", x, y); break;
