@@ -133,6 +133,7 @@ typedef enum {
 	SYM_INSTRUCTION,
 	SYM_REGISTER,
 	SYM_NUMBER,
+	SYM_STRING,
 	SYM_I,
 	SYM_DT,
 	SYM_ST,
@@ -144,7 +145,8 @@ typedef enum {
 	SYM_DEFINE,
 	SYM_OFFSET,
 	SYM_DB,
-	SYM_DW
+	SYM_DW,
+	SYM_TEXT,
 } SYMBOL;
 
 /* List of instruction names. */
@@ -650,7 +652,8 @@ scan_start:
 				stepper->sym = SYM_DB;
 			else if(!strcmp(stepper->token, "dw"))
 				stepper->sym = SYM_DW;
-
+			else if(!strcmp(stepper->token, "text"))
+				stepper->sym = SYM_TEXT;
 			else {
 				if (is_arith(*stepper->in)){
 					char arith_exp[64];
@@ -673,7 +676,35 @@ scan_start:
 		}
 	} else if(is_arith(*stepper->in) ) {
 		copy_arithmetic_expression(stepper->token, &stepper->in);
-		stepper->sym=SYM_NUMBER;
+		stepper->sym = SYM_NUMBER;
+	} else if(*stepper->in == '\"') {
+		stepper->in++;
+		for(;;) {
+			if(!*stepper->in || strchr("\r\n", *stepper->in))
+				exit_error("error:%d: unterminated string literal\n", stepper->linenum);
+			if(*stepper->in == '\"') break;
+			if(*stepper->in == '\\') {
+				switch(*(++stepper->in)) {
+					case '\0':
+						exit_error("error:%d: bad escape in string literal\n", stepper->linenum);
+					case 'a': *tok++ = '\a'; break;
+					case 'b': *tok++ = '\b'; break;
+					case 'e': *tok++ = 0x1B; break;
+					case 'v': *tok++ = '\v'; break;
+					case 'f': *tok++ = '\f'; break;
+					case 'n': *tok++ = '\n'; break;
+					case 'r': *tok++ = '\r'; break;
+					case 't': *tok++ = '\t'; break;
+					case '\\': *tok++ = '\\'; break;
+					default: *tok++ = *stepper->in; break;
+				}
+				stepper->in++;
+			} else
+				*tok++ = *(stepper->in++);
+		}
+		*tok++ = '\0';
+		stepper->in++;
+		stepper->sym = SYM_STRING;
 	} else {
 		stepper->token[0] = *stepper->in;
 		stepper->token[1] = '\0';
@@ -850,7 +881,7 @@ int c8_assemble(const char *text) {
 			} while(stepper.sym == ',');
 		break;
 		/**
-		 * ### dw
+		 * ### `dw`
 		 *
 		 * Syntax: `dw word, word, word, ...`
 		 *
@@ -867,6 +898,28 @@ int c8_assemble(const char *text) {
 				emit_e(&stepper,0, 4);
 				nextsym(&stepper);
 			} while(stepper.sym == ',');
+		break;
+		/**
+		 * ### text
+		 *
+		 * Syntax: `text "A String"`
+		 *
+		 * Writes all the bytes in the string, terminated with a null (`'\0'`) character, to the output.
+		 *
+		 * For example `text "hello"` is equivalent to `db #68, #65, #6C, #6C, #6F, #00`.
+		 */
+		case SYM_TEXT:
+			nextsym(&stepper);
+			if(stepper.sym != SYM_STRING)
+				exit_error("error:%d: string value expected\n", stepper.linenum);
+			Emitted e = { .type=EMIT8_BITMASK };
+			for(char *c = stepper.token; *c; c++) {
+				e.value = *c;
+				emit(&stepper, e);
+			}
+			e.value = '\0';
+			emit(&stepper, e);
+			nextsym(&stepper);
 		break;
 		/**
 		 * ## Labels

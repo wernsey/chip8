@@ -81,3 +81,14 @@ y: db
 	%00111100,
 	%00100100
 	CLS
+
+; You can load text data into the output through the `text` directive:
+string1:
+	text "hello"
+; (The label `string1` can be used later like so: `ld I, string1`)
+
+; The above is equivalent to this `db` directive
+; db #68, #65, #6C, #6C, #6F, #00
+
+; The string can also contain special symbols escaped with '\'
+string2: text "\"\e\r\n"

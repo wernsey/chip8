@@ -218,7 +218,7 @@ This code is licensed under the [Apache license version 2](http://www.apache.org
 * [ ] I really need to fix the "Display wait" quirk. See [Timendus][]'s 5 `5-quirks.ch8` test.
 * [x] The quirks need to be in a flags variable so that they can be controlled at runtime
 * [ ] The assembler needs an `include "file.asm"` directive.
-* [ ] I should consider a `string "hello"` directive in the assembler, that places a null
+* [x] I should consider a `text "hello"` directive in the assembler, that places a null
       terminated string in the bytecode. Users might be able to display the text at some point
       if you have the right sprites; [Octo][] does it.
 * [ ] Allow for some hooks in the library to let the `SYS nnn` (`0nnn`) instructions break
