@@ -37,7 +37,6 @@ static int bg_color = 0x000055;
 /* Is the interpreter running? Set to 0 to enter "debug" mode */
 static int running = 1;
 
-
 static Bitmap *chip8_screen;
 static Bitmap *hud;
 
@@ -107,6 +106,42 @@ void error_callback_func(const char *s) {
 }
 #endif
 
+/*
+ * This is an example of how you can write a CHIP8 program that can access the
+ *  world outside by invoking the `SYS nnn` (`0nnn`) instruction
+ *
+ * ```
+ * CLS
+ * LD V0, #AB
+ * SYS 2
+ * LD V0, #CD
+ * SYS 2
+ * LD V0, #EF
+ * SYS 2
+ * LD I, string
+ * SYS 1
+ * EXIT
+ * string: text "Hello World!"
+ * ```
+ */
+int example_sys_hook(unsigned int nnn) {
+    switch(nnn) {
+        case 1: {
+            char *str = (char*)&C8.RAM[C8.I];
+            rlog("console: %s", str);
+        } break;
+        case 2: {
+            rlog("console: V0: %02X", C8.V[0]);
+        } break;
+        case 3: {
+            rlog("console: Halting interpreter; VF: %02X", C8.V[0xF]);
+            return 0;
+        } break;
+        default: break;
+    }
+    return 1;
+}
+
 void init_game(int argc, char *argv[]) {
 
     const char *infile = NULL;
@@ -137,6 +172,7 @@ void init_game(int argc, char *argv[]) {
     }
     infile = argv[optind++];
 
+    c8_sys_hook = example_sys_hook;
 
 #ifdef __EMSCRIPTEN__
     em_ready = 0;

@@ -221,8 +221,10 @@ This code is licensed under the [Apache license version 2](http://www.apache.org
 * [x] I should consider a `text "hello"` directive in the assembler, that places a null
       terminated string in the bytecode. Users might be able to display the text at some point
       if you have the right sprites; [Octo][] does it.
-* [ ] Allow for some hooks in the library to let the `SYS nnn` (`0nnn`) instructions break
-      out into the environment outside. It might be neat if you embed a CHIP-8 interpreter
-      in another program and call out to it as a sort of scripting language.
+* [x] Allow for some hooks in the library to let the `SYS nnn` (`0nnn`) instructions break
+      out into the environment outside.
+      * It's meant as a bit of a joke, might be neat if you embed a CHIP-8 interpreter
+        in another program and call out to it as a sort of scripting language.
+* [ ] Fix the assembler that doesn't do any bounds checks on `stepper->token`
 * [ ] Breakpoints in the debugger
 * [ ] ~~A `.map` file output by the assembler...~~

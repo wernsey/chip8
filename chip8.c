@@ -38,20 +38,12 @@ unsigned int c8_get_quirks() {
 
 int c8_verbose = 0;
 
-static uint8_t V[16];          /* CHIP-8 registers */
-static uint8_t RAM[TOTAL_RAM]; /* Interpreter RAM */
-static uint16_t PC;            /* Program counter */
-static uint16_t I;             /* Index register */
-static uint8_t DT, ST;         /* Delay timer, sound timer */
-
-/* Stack, Stack pointer */
-static uint16_t stack[16];
-static uint8_t SP;
+chip8_t C8;
 
 /* Display memory */
 static uint8_t pixels[1024];
 
-static int yield = 0;
+static int yield = 0, borked = 0;
 
 static int screen_updated; /* Screen updated */
 static int hi_res; /* Hi-res mode? */
@@ -71,8 +63,10 @@ int (*c8_puts)(const char* s) = _puts_default;
 
 int (*c8_rand)() = rand;
 
+c8_sys_hook_t c8_sys_hook = NULL;
+
 /* Standard 4x5 font */
-static uint8_t font[] = {
+static const uint8_t font[] = {
 /* '0' */ 0xF0, 0x90, 0x90, 0x90, 0xF0,
 /* '1' */ 0x20, 0x60, 0x20, 0x20, 0x70,
 /* '2' */ 0xF0, 0x10, 0xF0, 0x80, 0xF0,
@@ -92,7 +86,7 @@ static uint8_t font[] = {
 };
 
 /* SuperChip hi-res 8x10 font */
-static uint8_t hfont[] = {
+static const uint8_t hfont[] = {
 /* '0' */ 0x7C, 0x82, 0x82, 0x82, 0x82, 0x82, 0x82, 0x82, 0x7C, 0x00,
 /* '1' */ 0x08, 0x18, 0x38, 0x08, 0x08, 0x08, 0x08, 0x08, 0x3C, 0x00,
 /* '2' */ 0x7C, 0x82, 0x02, 0x02, 0x04, 0x18, 0x20, 0x40, 0xFE, 0x00,
@@ -112,32 +106,33 @@ static uint8_t hfont[] = {
 };
 
 void c8_reset() {
-	memset(V, 0, sizeof V);
-	memset(RAM, 0, sizeof RAM);
-	PC = PROG_OFFSET;
-	I = 0;
-	DT = 0;
-	ST = 0;
-	SP = 0;
-	memset(stack, 0, sizeof stack);
+	memset(C8.V, 0, sizeof C8.V);
+	memset(C8.RAM, 0, sizeof C8.RAM);
+	C8.PC = PROG_OFFSET;
+	C8.I = 0;
+	C8.DT = 0;
+	C8.ST = 0;
+	C8.SP = 0;
+	memset(C8.stack, 0, sizeof C8.stack);
 
 	assert(FONT_OFFSET + sizeof font <= PROG_OFFSET);
-	memcpy(RAM + FONT_OFFSET, font, sizeof font);
+	memcpy(C8.RAM + FONT_OFFSET, font, sizeof font);
 	assert(HFONT_OFFSET + sizeof hfont <= FONT_OFFSET);
-	memcpy(RAM + HFONT_OFFSET, hfont, sizeof hfont);
+	memcpy(C8.RAM + HFONT_OFFSET, hfont, sizeof hfont);
 
 	hi_res = 0;
 	screen_updated = 0;
 	yield = 0;
+	borked = 0;
 }
 
 void c8_step() {
-	assert(PC < TOTAL_RAM);
+	assert(C8.PC < TOTAL_RAM);
 
-	if(yield) return;
+	if(yield || borked) return;
 
-	uint16_t opcode = RAM[PC] << 8 | RAM[PC+1];
-	PC += 2;
+	uint16_t opcode = C8.RAM[C8.PC] << 8 | C8.RAM[C8.PC+1];
+	C8.PC += 2;
 
 	uint8_t x = (opcode >> 8) & 0x0F;
 	uint8_t y = (opcode >> 4) & 0x0F;
@@ -157,8 +152,12 @@ void c8_step() {
 				screen_updated = 1;
 			} else if(opcode == 0x00EE) {
 				/* RET */
-				if(SP == 0) return; /* You've got problems */
-				PC = stack[--SP];
+				if(C8.SP == 0){
+					/* You've got problems */
+					borked = 1;
+					return;
+				}
+				C8.PC = C8.stack[--C8.SP];
 			} else if((opcode & 0xFFF0) == 0x00C0) {
 				/* SCD nibble */
 				c8_resolution(&col, &row);
@@ -194,7 +193,7 @@ void c8_step() {
 				screen_updated = 1;
 			} else if(opcode == 0x00FD) {
 				/* EXIT */
-				PC -= 2; /* reset the PC to the 00FD */
+				C8.PC -= 2; /* reset the PC to the 00FD */
 				/* subsequent calls will encounter the 00FD again,
 					and c8_ended() will return 1 */
 				return;
@@ -209,120 +208,125 @@ void c8_step() {
 					screen_updated = 1;
 				hi_res = 1;
 			} else {
-				/* SYS - not implemented, not supported */
+				/* SYS: If there's a hook, call it otherwise treat it as a no-op */
+				if(c8_sys_hook) {
+					int result = c8_sys_hook(nnn);
+					if(!result)
+						borked = 1;
+				}
 			}
 		break;
 		case 0x1000:
 			/* JP nnn */
-			PC = nnn;
+			C8.PC = nnn;
 			break;
 		case 0x2000:
 			/* CALL nnn */
-			if(SP >= 16) return; /* See RET */
-			stack[SP++] = PC;
-			PC = nnn;
+			if(C8.SP >= 16) return; /* See RET */
+			C8.stack[C8.SP++] = C8.PC;
+			C8.PC = nnn;
 			break;
 		case 0x3000:
 			/* SE Vx, kk */
-			if(V[x] == kk) PC += 2;
+			if(C8.V[x] == kk) C8.PC += 2;
 			break;
 		case 0x4000:
 			/* SNE Vx, kk */
-			if(V[x] != kk) PC += 2;
+			if(C8.V[x] != kk) C8.PC += 2;
 			break;
 		case 0x5000:
 			/* SE Vx, Vy */
-			if(V[x] == V[y]) PC += 2;
+			if(C8.V[x] == C8.V[y]) C8.PC += 2;
 			break;
 		case 0x6000:
 			/* LD Vx, kk */
-			V[x] = kk;
+			C8.V[x] = kk;
 			break;
 		case 0x7000:
 			/* ADD Vx, kk */
-			V[x] += kk;
+			C8.V[x] += kk;
 			break;
 		case 0x8000: {
 			uint16_t ans, carry;
 			switch(nibble) {
 				case 0x0:
 					/* LD Vx, Vy */
-					V[x] = V[y];
+					C8.V[x] = C8.V[y];
 					break;
 				case 0x1:
 					/* OR Vx, Vy */
-					V[x] |= V[y];
+					C8.V[x] |= C8.V[y];
 					if(quirks & QUIRKS_VF_RESET)
-						V[0xF] = 0;
+						C8.V[0xF] = 0;
 					break;
 				case 0x2:
 					/* AND Vx, Vy */
-					V[x] &= V[y];
+					C8.V[x] &= C8.V[y];
 					if(quirks & QUIRKS_VF_RESET)
-						V[0xF] = 0;
+						C8.V[0xF] = 0;
 					break;
 				case 0x3:
 					/* XOR Vx, Vy */
-					V[x] ^= V[y];
+					C8.V[x] ^= C8.V[y];
 					if(quirks & QUIRKS_VF_RESET)
-						V[0xF] = 0;
+						C8.V[0xF] = 0;
 					break;
 				case 0x4:
 					/* ADD Vx, Vy */
-					ans = V[x] + V[y];
-					V[x] = ans & 0xFF;
-					V[0xF] = (ans > 255);
+					ans = C8.V[x] + C8.V[y];
+					C8.V[x] = ans & 0xFF;
+					C8.V[0xF] = (ans > 255);
 					break;
 				case 0x5:
 					/* SUB Vx, Vy */
-					ans = V[x] - V[y];
-					carry = (V[x] > V[y]);
-					V[x] = ans & 0xFF;
-					V[0xF] = carry;
+					ans = C8.V[x] - C8.V[y];
+					carry = (C8.V[x] > C8.V[y]);
+					C8.V[x] = ans & 0xFF;
+					C8.V[0xF] = carry;
 					break;
 				case 0x6:
 					/* SHR Vx, Vy */
 					if(!(quirks & QUIRKS_SHIFT))
-						V[x] = V[y];
-					carry = (V[x] & 0x01);
-					V[x] >>= 1;
-					V[0xF] = carry;
+						C8.V[x] = C8.V[y];
+					carry = (C8.V[x] & 0x01);
+					C8.V[x] >>= 1;
+					C8.V[0xF] = carry;
 					break;
 				case 0x7:
 					/* SUBN Vx, Vy */
-					ans = V[y] - V[x];
-					carry = (V[y] > V[x]);
-					V[x] = ans & 0xFF;
-					V[0xF] = carry;
+					ans = C8.V[y] - C8.V[x];
+					carry = (C8.V[y] > C8.V[x]);
+					C8.V[x] = ans & 0xFF;
+					C8.V[0xF] = carry;
 					break;
 				case 0xE:
 					/* SHL Vx, Vy */
 					if(!(quirks & QUIRKS_SHIFT))
-						V[x] = V[y];
-					carry = ((V[x] & 0x80) != 0);
-					V[x] <<= 1;
-					V[0xF] = carry;
+						C8.V[x] = C8.V[y];
+					carry = ((C8.V[x] & 0x80) != 0);
+					C8.V[x] <<= 1;
+					C8.V[0xF] = carry;
 					break;
 			}
 		} break;
 		case 0x9000:
 			/* SNE Vx, Vy */
-			if(V[x] != V[y]) PC += 2;
+			if(C8.V[x] != C8.V[y]) C8.PC += 2;
 			break;
 		case 0xA000:
 			/* LD I, nnn */
-			I = nnn;
+			C8.I = nnn;
 			break;
 		case 0xB000:
 			/* JP V0, nnn */
 			if(quirks & QUIRKS_JUMP)
-				PC = (nnn + V[x]) & 0xFFF;
+				C8.PC = (nnn + C8.V[x]) & 0xFFF;
 			else
-				PC = (nnn + V[0]) & 0xFFF;
+				C8.PC = (nnn + C8.V[0]) & 0xFFF;
 			break;
 		case 0xC000:
 			/* RND Vx, kk */
-			V[x] = c8_rand() & kk; /* FIXME: Better RNG? */
+			C8.V[x] = c8_rand() & kk; /* FIXME: Better RNG? */
 			break;
 		case 0xD000: {
 			/* DRW Vx, Vy, nibble */
@@ -338,9 +342,9 @@ void c8_step() {
 				W = 64; H = 32; mW = 0x3F; mH = 0x1F;
 			}
 
-			V[0xF] = 0;
+			C8.V[0xF] = 0;
 			if(nibble) {
-				x = V[x]; y = V[y];
+				x = C8.V[x]; y = C8.V[y];
 				x &= mW;
 				y &= mH;
 				for(q = 0; q < nibble; q++) {
@@ -352,7 +356,7 @@ void c8_step() {
 						tx = (x + p);
 						if((quirks & QUIRKS_CLIPPING) && (tx >= W))
 							break;
-						pix = (RAM[I + q] & (0x80 >> p)) != 0;
+						pix = (C8.RAM[C8.I + q] & (0x80 >> p)) != 0;
 						if(pix) {
 							tx &= mW;
 							ty &= mH;
@@ -360,14 +364,14 @@ void c8_step() {
 							bit = 1 << (byte & 0x07);
 							byte >>= 3;
 							if(pixels[byte] & bit)
-								V[0x0F] = 1;
+								C8.V[0x0F] = 1;
 							pixels[byte] ^= bit;
 						}
 					}
 				}
 			} else {
 				/* SCHIP mode has a 16x16 sprite if nibble == 0 */
-				x = V[x]; y = V[y];
+				x = C8.V[x]; y = C8.V[y];
 				x &= mW;
 				y &= mH;
 				for(q = 0; q < 16; q++) {
@@ -381,15 +385,15 @@ void c8_step() {
 							break;
 
 						if(p >= 8)
-							pix = (RAM[I + (q * 2) + 1] & (0x80 >> (p & 0x07))) != 0;
+							pix = (C8.RAM[C8.I + (q * 2) + 1] & (0x80 >> (p & 0x07))) != 0;
 						else
-							pix = (RAM[I + (q * 2)] & (0x80 >> p)) != 0;
+							pix = (C8.RAM[C8.I + (q * 2)] & (0x80 >> p)) != 0;
 						if(pix) {
 							byte = ty * W + tx;
 							bit = 1 << (byte & 0x07);
 							byte >>= 3;
 							if(pixels[byte] & bit)
-								V[0x0F] = 1;
+								C8.V[0x0F] = 1;
 							pixels[byte] ^= bit;
 						}
 					}
@@ -403,30 +407,30 @@ void c8_step() {
 		case 0xE000: {
 			if(kk == 0x9E) {
 				/* SKP Vx */
-				if(keys & (1 << V[x]))
-					PC += 2;
+				if(keys & (1 << C8.V[x]))
+					C8.PC += 2;
 			} else if(kk == 0xA1) {
 				/* SKNP Vx */
-				if(!(keys & (1 << V[x])))
-					PC += 2;
+				if(!(keys & (1 << C8.V[x])))
+					C8.PC += 2;
 			}
 		} break;
 		case 0xF000: {
 			switch(kk) {
 				case 0x07:
 					/* LD Vx, DT */
-					V[x] = DT;
+					C8.V[x] = C8.DT;
 					break;
 				case 0x0A: {
 					/* LD Vx, K */
 					if(!keys) {
 						/* subsequent calls will encounter the Fx0A again */
-						PC -= 2;
+						C8.PC -= 2;
 						return;
 					}
 					for(y = 0; y < 0xF; y++) {
 						if(keys & (1 << y)) {
-							V[x] = y;
+							C8.V[x] = y;
 							break;
 						}
 					}
@@ -434,66 +438,66 @@ void c8_step() {
 				} break;
 				case 0x15:
 					/* LD DT, Vx */
-					DT = V[x];
+					C8.DT = C8.V[x];
 					break;
 				case 0x18:
 					/* LD ST, Vx */
-					ST = V[x];
+					C8.ST = C8.V[x];
 					break;
 				case 0x1E:
 					/* ADD I, Vx */
-					I += V[x];
+					C8.I += C8.V[x];
 					/* According to [wikipedia][] the VF is set if I overflows. */
-					if(I > 0xFFF) {
-						V[0xF] = 1;
-						I &= 0xFFF;
+					if(C8.I > 0xFFF) {
+						C8.V[0xF] = 1;
+						C8.I &= 0xFFF;
 					} else {
-						V[0xF] = 0;
+						C8.V[0xF] = 0;
 					}
 					break;
 				case 0x29:
 					/* LD F, Vx */
-					I = FONT_OFFSET + (V[x] & 0x0F) * 5;
+					C8.I = FONT_OFFSET + (C8.V[x] & 0x0F) * 5;
 					break;
 				case 0x30:
 					/* LD HF, Vx - Load 8x10 hi-resolution font */
-					I = HFONT_OFFSET + (V[x] & 0x0F) * 10;
+					C8.I = HFONT_OFFSET + (C8.V[x] & 0x0F) * 10;
 					break;
 				case 0x33:
 					/* LD B, Vx */
-					RAM[I] = (V[x] / 100) % 10;
-					RAM[I + 1] = (V[x] / 10) % 10;
-					RAM[I + 2] = V[x] % 10;
+					C8.RAM[C8.I] = (C8.V[x] / 100) % 10;
+					C8.RAM[C8.I + 1] = (C8.V[x] / 10) % 10;
+					C8.RAM[C8.I + 2] = C8.V[x] % 10;
 					break;
 				case 0x55:
 					/* LD [I], Vx */
-					if(I + x > TOTAL_RAM)
-						x = TOTAL_RAM - I;
-					assert(I + x <= TOTAL_RAM);
+					if(C8.I + x > TOTAL_RAM)
+						x = TOTAL_RAM - C8.I;
+					assert(C8.I + x <= TOTAL_RAM);
 					if(x >= 0)
-						memcpy(RAM + I, V, x+1);
+						memcpy(C8.RAM + C8.I, C8.V, x+1);
 					if(quirks & QUIRKS_MEM_CHIP8)
-						I += x + 1;
+						C8.I += x + 1;
 					break;
 				case 0x65:
 					/* LD Vx, [I] */
-					if(I + x > TOTAL_RAM)
-						x = TOTAL_RAM - I;
-					assert(I + x <= TOTAL_RAM);
+					if(C8.I + x > TOTAL_RAM)
+						x = TOTAL_RAM - C8.I;
+					assert(C8.I + x <= TOTAL_RAM);
 					if(x >= 0)
-						memcpy(V, RAM + I, x+1);
+						memcpy(C8.V, C8.RAM + C8.I, x+1);
 					if(quirks & QUIRKS_MEM_CHIP8)
-						I += x + 1;
+						C8.I += x + 1;
 					break;
 				case 0x75:
 					/* LD R, Vx */
 					assert(x <= sizeof hp48_flags);
-					memcpy(hp48_flags, V, x);
+					memcpy(hp48_flags, C8.V, x);
 					break;
 				case 0x85:
 					/* LD Vx, R */
 					assert(x <= sizeof hp48_flags);
-					memcpy(V, hp48_flags, x);
+					memcpy(C8.V, hp48_flags, x);
 					break;
 			}
 		} break;
@@ -502,34 +506,34 @@ void c8_step() {
 
 int c8_ended() {
 	/* Check whether the next instruction is 00FD */
-	return c8_opcode(PC) == 0x00FD;
+	return borked || c8_opcode(C8.PC) == 0x00FD;
 }
 int c8_waitkey() {
-	return (c8_opcode(PC) & 0xF0FF) == 0xF00A;
+	return (c8_opcode(C8.PC) & 0xF0FF) == 0xF00A;
 }
 
 uint8_t c8_get(uint16_t addr) {
 	assert(addr < TOTAL_RAM);
-	return RAM[addr];
+	return C8.RAM[addr];
 }
 
 void c8_set(uint16_t addr, uint8_t byte) {
 	assert(addr < TOTAL_RAM);
-	RAM[addr] = byte;
+	C8.RAM[addr] = byte;
 }
 
 uint16_t c8_opcode(uint16_t addr) {
 	assert(addr < TOTAL_RAM - 1);
-	return RAM[addr] << 8 | RAM[addr+1];
+	return C8.RAM[addr] << 8 | C8.RAM[addr+1];
 }
 
 uint16_t c8_get_pc() {
-	return PC;
+	return C8.PC;
 }
 
 uint16_t c8_prog_size() {
 	uint16_t n;
-	for(n = TOTAL_RAM - 1; n > PROG_OFFSET && RAM[n] == 0; n--);
+	for(n = TOTAL_RAM - 1; n > PROG_OFFSET && C8.RAM[n] == 0; n--);
 	if(++n & 0x1) // Fix for #4
 		return n + 1;
 	return n;
@@ -537,7 +541,7 @@ uint16_t c8_prog_size() {
 
 uint8_t c8_get_reg(uint8_t r) {
 	if(r > 0xF) return 0;
-	return V[r];
+	return C8.V[r];
 }
 
 int c8_screen_updated() {
@@ -582,19 +586,19 @@ void c8_key_up(uint8_t k) {
 
 void c8_60hz_tick() {
 	yield = 0;
-	if(DT > 0) DT--;
-	if(ST > 0) ST--;
+	if(C8.DT > 0) C8.DT--;
+	if(C8.ST > 0) C8.ST--;
 }
 
 int c8_sound() {
-	return ST > 0;
+	return C8.ST > 0;
 }
 
 size_t c8_load_program(uint8_t program[], size_t n) {
 	if(n + PROG_OFFSET > TOTAL_RAM)
 		n = TOTAL_RAM - PROG_OFFSET;
 	assert(n + PROG_OFFSET <= TOTAL_RAM);
-	memcpy(RAM + PROG_OFFSET, program, n);
+	memcpy(C8.RAM + PROG_OFFSET, program, n);
 	return n;
 }
 
@@ -610,7 +614,7 @@ int c8_load_file(const char *fname) {
 		return 0;
 	}
 	rewind(f);
-	r = fread(RAM + PROG_OFFSET, 1, len, f);
+	r = fread(C8.RAM + PROG_OFFSET, 1, len, f);
 	fclose(f);
 	if(r != len)
 		return 0;
@@ -650,7 +654,7 @@ int c8_save_file(const char *fname) {
 	FILE *f = fopen(fname, "wb");
 	if(!f)
 		return 0;
-	if(fwrite(RAM + PROG_OFFSET, 1, len, f) != len)
+	if(fwrite(C8.RAM + PROG_OFFSET, 1, len, f) != len)
 		return 0;
 	fclose(f);
 	return len;

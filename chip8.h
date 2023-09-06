@@ -63,6 +63,33 @@
  */
 #define MAX_MESSAGE_TEXT	128
 
+/** `typedef struct chip8_t`
+ *
+ * Structure to keep the interpreter's state and registers.
+ *
+ * It has these members:
+ *
+ * * `uint8_t V[16]` - CHIP-8 registers
+ * * `uint8_t RAM[TOTAL_RAM]` - Interpreter RAM
+ * * `uint16_t PC` - Program counter
+ * * `uint16_t I` - Index register
+ * * `uint8_t DT, ST` - Delay timer and sound timer
+ * * `uint16_t stack[16]` - stack
+ * * `uint8_t SP` - Stack pointer
+ *
+ */
+typedef struct {
+	uint8_t V[16];
+	uint8_t RAM[TOTAL_RAM];
+	uint16_t PC;
+	uint16_t I;
+	uint8_t DT, ST;
+	uint16_t stack[16];
+	uint8_t SP;
+} chip8_t;
+
+extern chip8_t C8;
+
 /**
  * ## Quirks
  *
@@ -164,6 +191,20 @@ int c8_ended();
  * The **Fx0A** instruction is the one that waits for a specific key to be pressed.
  */
 int c8_waitkey();
+
+/**
+ * `typedef int (*c8_sys_hook_t)(unsigned int nnn);`  \
+ * `extern c8_sys_hook_t c8_sys_hook;`  \
+ *
+ * If `c8_sys_hook` is not null, then the interpreter will call it when
+ * it encounters a `SYS nnn` (`0nnn`) instruction, with `nnn` as a parameter.
+ *
+ * The function should return a non-zero value on success. If it returns
+ * zero, the interpreter will halt.
+ */
+typedef int (*c8_sys_hook_t)(unsigned int nnn);
+
+extern c8_sys_hook_t c8_sys_hook;
 
 /** ## Debugging */
 
