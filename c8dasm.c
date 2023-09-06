@@ -108,6 +108,8 @@ void c8_disasm() {
 
 			if(opcode == 0x00EE) { /* RET */
 				break;
+			} else if(opcode == 0x00FD) { /* EXIT */
+				break;
 			} else if((opcode & 0xF000) == 0x1000) { /* JP addr */
 				addr = nnn;
 				assert(addr < TOTAL_RAM);
