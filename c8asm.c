@@ -149,46 +149,52 @@ typedef enum {
 	SYM_TEXT,
 } SYMBOL;
 
-/* List of instruction names. */
+/* List of instruction names.
+(Keep this list sorted because of `bsearch()` */
 static const char *inst_names[] = {
 	"add",
 	"and",
+	"bcd",
 	"call",
 	"cls",
+	"delay",
 	"drw",
+	"exit",
+	"hex",
+	"hexx",
+	"high",
 	"jp",
+	"key",
 	"ld",
+	"low",
 	"or",
 	"ret",
 	"rnd",
+	"rstr",
+	"rstrx",
+	"scd",
+	"scl",
+	"scr",
 	"se",
 	"shl",
 	"shr",
 	"sknp",
 	"skp",
 	"sne",
+	"sound",
+	"stor",
+	"storx",
 	"sub",
 	"subn",
 	"sys",
 	"xor",
-	"scd",
-	"scr",
-	"scl",
-	"exit",
-	"low",
-	"high",
-	/* Octo inspired Mnemonics: */
-	"delay",
-	"sound",
-	"hex",
-	"hexx",
-	"bcd",
-	"key",
-	"stor",
-	"rstr",
-	"storx",
-	"rstrx",
 };
+/* TIL https://stackoverflow.com/a/15824981/115589 */
+static int inst_cmp(const void *s1, const void *s2) {
+  const char *key = s1;
+  const char * const *arg = s2;
+  return strcmp(key, *arg);
+}
 
 typedef struct {
 	const char * in;
@@ -498,7 +504,6 @@ static int evaluate_arithmetic_expression(char *expression, const int linenum){
 				*bufptr++=*expression++;
 			*bufptr='\0';
 			for(int i = 0; i < n_lookup; i++) {
-				//size_t len = strlen(lookup[i].label);
 				if(!strcmp(lookup[i].label, buffer)) {
 					if(is_prev_figure) {
 						*(++operators.top)='+';
@@ -592,7 +597,7 @@ static void add_definition(const Stepper * stepper, char *name) {
 }
 
 static int nextsym(Stepper * stepper) {
-	/* TODO: Ought to guard against buffer overruns in tok, but not today. */
+	/* FIXME: Ought to guard against buffer overruns in tok, but not today. */
 	char *tok = stepper->token;
 
 	stepper->sym = SYM_END;
@@ -619,13 +624,9 @@ scan_start:
 		while(isalnum(*stepper->in) || *stepper->in == '_')
 			*tok++ = tolower(*stepper->in++);
 		*tok = '\0';
-		for(int i = 0; i < (sizeof inst_names)/(sizeof inst_names[0]); i++)
-			if(!strcmp(inst_names[i], stepper->token)) {
-				stepper->sym = SYM_INSTRUCTION;
-				break;
-			}
-
-		if(stepper->sym != SYM_INSTRUCTION) {
+		if(bsearch(stepper->token, inst_names,  (sizeof inst_names)/(sizeof inst_names[0]), sizeof inst_names[0], inst_cmp)) {
+			stepper->sym = SYM_INSTRUCTION;
+		} else if(stepper->sym != SYM_INSTRUCTION) {
 			if(stepper->token[0] == 'v' && isxdigit(stepper->token[1]) && !stepper->token[2])
 				stepper->sym = SYM_REGISTER;
 			else if(!strcmp(stepper->token, "i"))
@@ -713,9 +714,6 @@ scan_start:
 
 	return stepper->sym;
 }
-
-
-
 
 void expect(Stepper * stepper, int what) {
 	SYMBOL sym = nextsym(stepper);
