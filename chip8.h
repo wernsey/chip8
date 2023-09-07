@@ -117,8 +117,9 @@ extern chip8_t C8;
  *   instruction as Bxnn as a jump to `Vx + xnn` rather than as `V0 + xnn`
  *   * (it may have been a mistake).
  *   * See [here](https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#bnnn-jump-with-offset)
- * * `QUIRKS_CLIPPING`
- *   * I didn't actually see in the documentation under what circumstances the clipping would be off
+ * * `QUIRKS_CLIPPING` - With clipping enabled, sprites off the edge of the screen are clipped.
+ *     If it is disabled, then those sprites are wrapped to the other side.
+ *   * This is associated with XO-CHIP
  *
  * In addition, these constants are defined for convenience:
  *

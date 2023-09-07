@@ -92,3 +92,6 @@ string1:
 
 ; The string can also contain special symbols escaped with '\'
 string2: text "\"\e\r\n"
+
+; This is how you can include another file:
+include "font2.asm"

@@ -169,7 +169,8 @@ and there were some discrepancies. This is how I handled them:
 * Tobias V. Langhoff's [Guide to making a CHIP-8 emulator][langhoff]
   * This one is very useful for explaining the various quirks
 * [Chip-8 on the COSMAC VIP: Drawing Sprites](https://web.archive.org/web/20200925222127if_/https://laurencescotford.com/chip-8-on-the-cosmac-vip-drawing-sprites/), by Laurence Scotford (archive link)
-* <https://chip-8.github.io/extensions/> - explains several of the variants out there
+* [CHIP-8 extensions and compatibility](https://chip-8.github.io/extensions/) -
+explains several of the variants out there
 * <https://github.com/zaymat/super-chip8>
   * The [load_quirk and shift_quirk](https://github.com/zaymat/super-chip8#load_quirk-and-shift_quirk)
     section of that README has another explaination of some of the
@@ -217,7 +218,8 @@ This code is licensed under the [Apache license version 2](http://www.apache.org
 
 * [ ] I really need to fix the "Display wait" quirk. See [Timendus][]'s 5 `5-quirks.ch8` test.
 * [x] The quirks need to be in a flags variable so that they can be controlled at runtime
-* [ ] The assembler needs an `include "file.asm"` directive.
+* [ ] The runtime should have a `-q` command line option to control the quirks
+* [x] The assembler needs an `include "file.asm"` directive.
 * [x] I should consider a `text "hello"` directive in the assembler, that places a null
       terminated string in the bytecode. Users might be able to display the text at some point
       if you have the right sprites; [Octo][] does it.
@@ -228,3 +230,8 @@ This code is licensed under the [Apache license version 2](http://www.apache.org
 * [ ] Fix the assembler that doesn't do any bounds checks on `stepper->token`
 * [ ] Breakpoints in the debugger
 * [ ] ~~A `.map` file output by the assembler...~~
+
+Porting to the Amiga 500 might be an interesting challenge to get it truly portable:
+The Amiga's bus is word aligned, so if the program counter is ever an odd number then
+the system might crash when it tries to retrieve an instruction. Also, the Amiga is big
+endian, so that might reveal some problems as well.

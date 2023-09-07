@@ -184,6 +184,12 @@ void c8_disasm() {
 					continue;
 				}
 
+				/* Make sure `db` clauses to blocks touched by `LD I, nnn` start on new line: */
+				if(TOUCHED(addr) && odata) {
+					c8_message("\n");
+					odata = 0;
+				}
+
 				if(!odata++) {
 					c8_message("L%03X: db #%02X", addr, c8_get(addr));
 				} else {
@@ -251,7 +257,7 @@ void c8_disasm() {
 				}
 			} break;
 			case 0x9000: sprintf(buffer,"SNE    V%1X, V%1X", x, y); break;
-			case 0xA000: sprintf(buffer,"LD     I,  #%03X", nnn); break;
+			case 0xA000: sprintf(buffer,"LD     I,  L%03X", nnn); break;
 			case 0xB000: sprintf(buffer,"JP     V0, #%03X", nnn); break;
 			case 0xC000: sprintf(buffer,"RND    V%1X, #%02X", x, kk); break;
 			case 0xD000: sprintf(buffer,"DRW    V%1X, V%1X, %d", x, y, nibble); break;
