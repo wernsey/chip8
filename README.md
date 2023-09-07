@@ -218,7 +218,7 @@ This code is licensed under the [Apache license version 2](http://www.apache.org
 
 * [ ] I really need to fix the "Display wait" quirk. See [Timendus][]'s 5 `5-quirks.ch8` test.
 * [x] The quirks need to be in a flags variable so that they can be controlled at runtime
-* [ ] The runtime should have a `-q` command line option to control the quirks
+* [x] The runtime should have a `-q` command line option to control the quirks
 * [x] The assembler needs an `include "file.asm"` directive.
 * [x] I should consider a `text "hello"` directive in the assembler, that places a null
       terminated string in the bytecode. Users might be able to display the text at some point

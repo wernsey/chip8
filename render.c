@@ -83,11 +83,16 @@ static void draw_screen();
 
 static void usage() {
     exit_error("Use these command line variables:\n"
-                "  -f fg  : Foreground color\n"
-                "  -b bg  : Background color\n"
-                "  -s spd : Specify the speed\n"
-                "  -d     : Debug mode\n"
-                "  -v     : increase verbosity\n"
+                "  -f fg        : Foreground color\n"
+                "  -b bg        : Background color\n"
+                "  -s spd       : Specify the speed\n"
+                "  -d           : Debug mode\n"
+                "  -v           : increase verbosity\n"
+                "  -q quirks    : sets the quirks mode\n"
+                "      `quirks` can be a comma separated combination\n"
+                "      of `none`, `vf`, `mem`, `disp`, `clip`, `shift`,\n"
+                "      `jump`, `default`, `chip8` and `schip`\n"
+                "  -h           : Displays this help\n"
                 );
 }
 
@@ -156,13 +161,32 @@ void init_game(int argc, char *argv[]) {
     bg_color = bm_byte_order(bg_color);
 
     int opt;
-    while((opt = getopt(argc, argv, "f:b:s:dvh")) != -1) {
+    while((opt = getopt(argc, argv, "f:b:s:dvhq:")) != -1) {
         switch(opt) {
             case 'v': c8_verbose++; break;
             case 'f': fg_color = bm_atoi(optarg); break;
             case 'b': bg_color = bm_atoi(optarg); break;
             case 's': speed = atoi(optarg); if(speed < 1) speed = 10; break;
             case 'd': running = 0; break;
+            case 'q': {
+                unsigned int quirks = 0;
+                char *token = strtok(optarg, ",");
+                while (token) {
+                    if(!strcmp(token, "none")) quirks = 0;
+                    else if(!strcmp(token, "vf")) quirks |= QUIRKS_VF_RESET;
+                    else if(!strcmp(token, "mem")) quirks |= QUIRKS_MEM_CHIP8;
+                    else if(!strcmp(token, "disp")) quirks |= QUIRKS_DISP_WAIT;
+                    else if(!strcmp(token, "clip")) quirks |= QUIRKS_CLIPPING;
+                    else if(!strcmp(token, "shift")) quirks |= QUIRKS_SHIFT;
+                    else if(!strcmp(token, "jump")) quirks |= QUIRKS_JUMP;
+                    else if(!strcmp(token, "default")) quirks |= QUIRKS_DEFAULT;
+                    else if(!strcmp(token, "chip8")) quirks |= QUIRKS_CHIP8;
+                    else if(!strcmp(token, "schip")) quirks |= QUIRKS_SCHIP;
+                    else rerror("warning: unknown quirk '%s'", token);
+                    token = strtok(NULL, ",");
+                }
+                c8_set_quirks(quirks);
+            } break;
             case 'h': usage(); break;
         }
     }
