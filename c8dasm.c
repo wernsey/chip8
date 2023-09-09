@@ -257,7 +257,12 @@ void c8_disasm() {
 				}
 			} break;
 			case 0x9000: sprintf(buffer,"SNE    V%1X, V%1X", x, y); break;
-			case 0xA000: sprintf(buffer,"LD     I,  L%03X", nnn); break;
+			case 0xA000:
+				if(nnn < 0x200)
+					sprintf(buffer,"LD     I,  #%03X", nnn);
+				else
+					sprintf(buffer,"LD     I,  L%03X", nnn);
+				break;
 			case 0xB000: sprintf(buffer,"JP     V0, #%03X", nnn); break;
 			case 0xC000: sprintf(buffer,"RND    V%1X, #%02X", x, kk); break;
 			case 0xD000: sprintf(buffer,"DRW    V%1X, V%1X, %d", x, y, nibble); break;
@@ -289,7 +294,7 @@ void c8_disasm() {
 			c8_message("error: Disassembler got confused at #%03X\n", addr);
 			return;
 		}
-		if(IS_LABEL(addr) || !out) {
+		if(IS_LABEL(addr) || TOUCHED(addr) || !out) {
 			if(odata) c8_message("\n");
 			c8_message("L%03X: %-20s    ; %04X  @ %03X\n", addr, buffer, opcode, addr);
 		} else

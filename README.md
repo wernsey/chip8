@@ -220,6 +220,10 @@ This code is licensed under the [Apache license version 2](http://www.apache.org
 * [x] The quirks need to be in a flags variable so that they can be controlled at runtime
 * [x] The runtime should have a `-q` command line option to control the quirks
 * [x] The assembler needs an `include "file.asm"` directive.
+  * [x] You need a way to specify how to do the include, because the assembler must be
+    usable even if you're not loading the source from files. I suggest a function pointer
+    that points to `c8_load_txt()` by default, but can be made to point elsewhere (or set to
+    `NULL` and disable includes completely)
 * [x] I should consider a `text "hello"` directive in the assembler, that places a null
       terminated string in the bytecode. Users might be able to display the text at some point
       if you have the right sprites; [Octo][] does it.
@@ -235,3 +239,8 @@ Porting to the Amiga 500 might be an interesting challenge to get it truly porta
 The Amiga's bus is word aligned, so if the program counter is ever an odd number then
 the system might crash when it tries to retrieve an instruction. Also, the Amiga is big
 endian, so that might reveal some problems as well.
+
+[XO-Chip compatibility](http://johnearnest.github.io/Octo/docs/XO-ChipSpecification.html) seems
+like something worth striving for. [Here](https://chip-8.github.io/extensions/#xo-chip)'s a
+short checklist of the changes. Also look at how [Octo](https://chip-8.github.io/extensions/#octo)
+modifies some instructions.

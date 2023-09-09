@@ -127,6 +127,8 @@
 #define MAX_DEFS    512
 #define MAX_LOOKUP  2048
 
+c8_include_callback_t c8_include_callback = c8_load_txt;
+
 typedef enum {
 	SYM_END,
 	SYM_IDENTIFIER,
@@ -750,7 +752,7 @@ static int get_num(char *token, size_t nibble_count, const int linenum) {
 	return a&(bound-1);
 }
 
-static int c8_assemble_internal(const char *text, Stepper *stepper);
+static int c8_assemble_internal(Stepper *stepper);
 
 int c8_assemble(const char *text) {
 
@@ -771,7 +773,7 @@ int c8_assemble(const char *text) {
 	n_lookup = 0;
 	n_defs = 0;
 
-	int r = c8_assemble_internal(text, stepper);
+	int r = c8_assemble_internal(stepper);
 	if(r)
 		return r;
 
@@ -814,7 +816,7 @@ int c8_assemble(const char *text) {
 	return 0;
 }
 
-int c8_assemble_internal(const char *text, Stepper *stepper) {
+int c8_assemble_internal(Stepper *stepper) {
 
 	nextsym(stepper);
 	while(stepper->sym != SYM_END) {
@@ -984,15 +986,22 @@ int c8_assemble_internal(const char *text, Stepper *stepper) {
 
 			if(c8_verbose)
 				c8_message("including '%s'\n", stepper->token);
-			const char *intext = c8_load_txt(stepper->token);
-			if(!intext) {
-				exit_error("error:%d: couldn't read %s\n", stepper->linenum, stepper->token);
+
+			if(!c8_include_callback) {
+				exit_error("error:%d: `include` directive disabled\n", stepper->linenum);
+			} else {
+				char *intext = c8_include_callback(stepper->token);
+				if(!intext) {
+					exit_error("error:%d: couldn't read %s\n", stepper->linenum, stepper->token);
+				}
+				Stepper nextStepper;
+				nextStepper.in = intext;
+				nextStepper.linenum = 1;
+				nextStepper.last = NULL;
+				c8_assemble_internal(&nextStepper);
+
+				free(intext);
 			}
-			Stepper nextStepper;
-			nextStepper.in = intext;
-			nextStepper.linenum = 1;
-			nextStepper.last = NULL;
-			c8_assemble_internal(intext, &nextStepper);
 
 			nextsym(stepper);
 		} break;

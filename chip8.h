@@ -405,6 +405,21 @@ extern char c8_message_text[];
 int c8_assemble(const char *text);
 
 /**
+ * `typedef char *(*c8_include_callback_t)(const char *fname);`  \
+ * `extern c8_include_callback_t c8_include_callback;`  \
+ *
+ * Controls how `include` directives are handled by the assembler.
+ *
+ * The callback should return the text in the specified file. The
+ * return value should be allocated on the heap, because the assembler
+ * will call `free()` on it when it is done.
+ *
+ * `c8_include_callback` defaults to `c8_load_txt()`.
+ */
+ typedef char *(*c8_include_callback_t)(const char *fname);
+ extern c8_include_callback_t c8_include_callback;
+
+/**
  * ## Disassembler
  *
  */
