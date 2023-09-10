@@ -600,7 +600,6 @@ static void add_definition(const Stepper * stepper, char *name) {
 }
 
 static int nextsym(Stepper * stepper) {
-	/* FIXME: Ought to guard against buffer overruns in tok, but not today. */
 	char *tok = stepper->token;
 
 	stepper->sym = SYM_END;
@@ -624,8 +623,12 @@ scan_start:
 	}
 
 	if(isalpha(*stepper->in)) {
-		while(isalnum(*stepper->in) || *stepper->in == '_')
+		while(isalnum(*stepper->in) || *stepper->in == '_') {
 			*tok++ = tolower(*stepper->in++);
+			if(tok - stepper->token >= TOK_SIZE) {
+				exit_error("error:%d: token too long (max:%d).\n", stepper->linenum, TOK_SIZE-1);
+			}
+		}
 		*tok = '\0';
 		if(bsearch(stepper->token, inst_names,  (sizeof inst_names)/(sizeof inst_names[0]), sizeof inst_names[0], inst_cmp)) {
 			stepper->sym = SYM_INSTRUCTION;
@@ -691,6 +694,8 @@ scan_start:
 			if(*stepper->in == '\"') break;
 			if(*stepper->in == '\\') {
 				switch(*(++stepper->in)) {
+					case '\r':
+					case '\n':
 					case '\0':
 						exit_error("error:%d: bad escape in string literal\n", stepper->linenum);
 					case 'a': *tok++ = '\a'; break;
@@ -707,8 +712,12 @@ scan_start:
 				stepper->in++;
 			} else
 				*tok++ = *(stepper->in++);
+
+			if(tok - stepper->token >= TOK_SIZE) {
+				exit_error("error:%d: string too long (max:%d).\n", stepper->linenum, TOK_SIZE-1);
+			}
 		}
-		*tok++ = '\0';
+		*tok = '\0';
 		stepper->in++;
 		stepper->sym = SYM_STRING;
 	} else {

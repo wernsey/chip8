@@ -216,7 +216,7 @@ This code is licensed under the [Apache license version 2](http://www.apache.org
 
 ## TODO/Roadmap/Ideas
 
-* [ ] I really need to fix the "Display wait" quirk. See [Timendus][]'s 5 `5-quirks.ch8` test.
+* [ ] I really need to fix the "Display wait" quirk. See [Timendus][]'s `5-quirks.ch8` test.
 * [x] The quirks need to be in a flags variable so that they can be controlled at runtime
 * [x] The runtime should have a `-q` command line option to control the quirks
 * [x] The assembler needs an `include "file.asm"` directive.
@@ -231,7 +231,13 @@ This code is licensed under the [Apache license version 2](http://www.apache.org
       out into the environment outside.
       * It's meant as a bit of a joke, might be neat if you embed a CHIP-8 interpreter
         in another program and call out to it as a sort of scripting language.
-* [ ] Fix the assembler that doesn't do any bounds checks on `stepper->token`
+* [ ] Command line option, like `-v addr:val`, that will set the byte at `addr` to `val` in the
+      RAM before running the interpreter.
+      * A immediate use case is for, example, [Timendus][]'s `5-quirks.ch8` test that allows you
+        to write a value between 1 and 3 to `0x1FF` and then the program will bypass the initial
+        menu and skip directly to the corresponding test. I imagine that while developing and
+        debugging CHIP-8 programs it might be useful to have such a mechanism.
+* [x] Fix the assembler that doesn't do any bounds checks on `stepper->token`
 * [ ] Breakpoints in the debugger
 * [ ] ~~A `.map` file output by the assembler...~~
 
