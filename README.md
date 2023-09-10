@@ -231,7 +231,7 @@ This code is licensed under the [Apache license version 2](http://www.apache.org
       out into the environment outside.
       * It's meant as a bit of a joke, might be neat if you embed a CHIP-8 interpreter
         in another program and call out to it as a sort of scripting language.
-* [ ] Command line option, like `-v addr:val`, that will set the byte at `addr` to `val` in the
+* [x] Command line option, like `-m addr=val`, that will set the byte at `addr` to `val` in the
       RAM before running the interpreter.
       * A immediate use case is for, example, [Timendus][]'s `5-quirks.ch8` test that allows you
         to write a value between 1 and 3 to `0x1FF` and then the program will bypass the initial

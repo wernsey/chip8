@@ -92,6 +92,8 @@ static void usage() {
                 "      `quirks` can be a comma separated combination\n"
                 "      of `none`, `vf`, `mem`, `disp`, `clip`, `shift`,\n"
                 "      `jump`, `default`, `chip8` and `schip`\n"
+                "  -a addr=val  : Sets the byte in RAM at `addr` to\n"
+                "                 the value `val` before executing.\n"
                 "  -h           : Displays this help\n"
                 );
 }
@@ -161,7 +163,7 @@ void init_game(int argc, char *argv[]) {
     bg_color = bm_byte_order(bg_color);
 
     int opt;
-    while((opt = getopt(argc, argv, "f:b:s:dvhq:")) != -1) {
+    while((opt = getopt(argc, argv, "f:b:s:dvhq:m:")) != -1) {
         switch(opt) {
             case 'v': c8_verbose++; break;
             case 'f': fg_color = bm_atoi(optarg); break;
@@ -186,6 +188,29 @@ void init_game(int argc, char *argv[]) {
                     token = strtok(NULL, ",");
                 }
                 c8_set_quirks(quirks);
+            } break;
+            case 'm': {
+                int addr, val;
+                char *token = strtok(optarg, ",");
+                while (token) {
+                    char *delim = strchr(token, '=');
+                    if(!delim) {
+                        exit_error("error: bad field for -m; expected `addr=value`, got `%s`", token);
+                    }
+
+                    *delim = '\0';
+                    delim++;
+                    addr = strtol(token, NULL, 0);
+                    val = strtol(delim, NULL, 0);
+                    if(addr < 0 || addr >= TOTAL_RAM)
+                        exit_error("error: bad address for -m: 0 <= addr < %d", TOTAL_RAM);
+                    if(val < 0 || val >= 256)
+                        exit_error("error: bad address for -m: 0 <= val < 256");
+
+                    c8_set(addr, val);
+
+                    token = strtok(NULL, ",");
+                }
             } break;
             case 'h': usage(); break;
         }
